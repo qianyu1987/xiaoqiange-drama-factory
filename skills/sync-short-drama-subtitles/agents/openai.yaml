@@ -1,0 +1,4 @@
+interface:
+  display_name: "短剧双语字幕同步"
+  short_description: "按真实对白时间制作中英双语短剧字幕并完成确定性导出"
+  default_prompt: "请按小钱哥短剧字幕规格识别对白，生成中文在上英文在下的同步字幕并导出成片。"
