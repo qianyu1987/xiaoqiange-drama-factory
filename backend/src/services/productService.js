@@ -58,8 +58,11 @@ function loadStoredAuth() {
 
 function getStatus(db, cfg) {
   const profile = getSetting(db, 'product_profile', {});
+  const product = flavor() === 'customer'
+    ? { name: PRODUCT.name, english_name: PRODUCT.english_name, version: PRODUCT.version }
+    : PRODUCT;
   return {
-    product: PRODUCT,
+    product,
     flavor: flavor(),
     customer_mode: flavor() === 'customer',
     onboarding_complete: flavor() === 'internal' || profile.onboarding_complete === true,

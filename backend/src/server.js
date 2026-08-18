@@ -1,7 +1,9 @@
 const { loadConfig } = require('./config/index.js');
 
 const preConfig = loadConfig();
-const tlsFlag = preConfig.server?.insecure_tls ?? preConfig.server?.INSECURE_TLS;
+const tlsFlag = process.env.PRODUCT_FLAVOR === 'customer'
+  ? false
+  : (preConfig.server?.insecure_tls ?? preConfig.server?.INSECURE_TLS);
 const insecureTlsOn =
   tlsFlag === true ||
   tlsFlag === 1 ||

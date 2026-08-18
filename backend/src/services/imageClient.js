@@ -1,6 +1,7 @@
 // 与 Go pkg/image + ImageGenerationService 对齐：调用图片生成 API，更新 image_generations 与角色头像
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
@@ -14,7 +15,9 @@ const seedance2AssetGuards = require('../utils/seedance2AssetGuards');
 
 /** 图生 POST 使用 Node http(s)，默认 10 分钟，避免 undici fetch 大包体/慢链路下模糊失败 */
 const IMAGE_HTTP_TIMEOUT_MS = 600000;
-const PRIVATE_FACTORY_ROOT = String(process.env.PRIVATE_FACTORY_ROOT || '').trim();
+const PRIVATE_FACTORY_ROOT = process.env.PRODUCT_FLAVOR === 'customer'
+  ? ''
+  : (String(process.env.PRIVATE_FACTORY_ROOT || '').trim() || path.join(os.tmpdir(), 'xiaoqiange-private-factory'));
 const PRIVATE_DIRECT_MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
 
 // 多参考图时注入到所有支持 negative_prompt 的模型，防止生成分割/拼贴布局；同时加入安全词以减少敏感拦截
