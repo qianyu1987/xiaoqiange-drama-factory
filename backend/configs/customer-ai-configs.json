@@ -1,0 +1,53 @@
+[
+  {
+    "service_type": "text",
+    "provider": "hhtc",
+    "api_protocol": "openai",
+    "name": "HHTC 文本调度",
+    "base_url": "https://www.hhtc.top/app/v1/model-gateway/text",
+    "api_key": "",
+    "model": ["xiaoqian-text"],
+    "default_model": "xiaoqian-text",
+    "endpoint": "/chat/completions",
+    "priority": 100,
+    "is_default": true
+  },
+  {
+    "service_type": "image",
+    "provider": "hhtc",
+    "api_protocol": "openai",
+    "name": "HHTC 图片调度",
+    "base_url": "https://www.hhtc.top/app/v1/model-gateway/image",
+    "api_key": "",
+    "model": ["xiaoqian-image"],
+    "default_model": "xiaoqian-image",
+    "endpoint": "/images/generations",
+    "priority": 100,
+    "is_default": true
+  },
+  {
+    "service_type": "storyboard_image",
+    "provider": "hhtc",
+    "api_protocol": "openai",
+    "name": "HHTC 分镜图片调度",
+    "base_url": "https://www.hhtc.top/app/v1/model-gateway/image",
+    "api_key": "",
+    "model": ["xiaoqian-image"],
+    "default_model": "xiaoqian-image",
+    "endpoint": "/images/generations",
+    "priority": 100,
+    "is_default": true
+  },
+  {
+    "service_type": "video",
+    "provider": "hhtc",
+    "api_protocol": "hhtc_video_generation",
+    "name": "HHTC 视频调度",
+    "base_url": "https://www.hhtc.top/app/v1/model-gateway/video",
+    "api_key": "",
+    "model": ["agnes-video-v2.0"],
+    "default_model": "agnes-video-v2.0",
+    "priority": 100,
+    "is_default": true
+  }
+]

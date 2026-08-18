@@ -1,0 +1,64 @@
+name: Windows customer ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Verify customer source
+        shell: pwsh
+        run: node verify-package.js .
+
+      - name: Install production backend dependencies
+        shell: pwsh
+        run: npm ci --omit=dev --prefix backend
+
+      - name: Assemble ZIP contents
+        shell: pwsh
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'xiaoqiange-package'
+          Remove-Item $package -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $package -ItemType Directory | Out-Null
+          Get-ChildItem -Force | Where-Object { $_.Name -notin @('.git', '.github') } | ForEach-Object {
+            Copy-Item $_.FullName $package -Recurse -Force
+          }
+          node "$package/verify-package.js" $package
+          New-Item release -ItemType Directory -Force | Out-Null
+          $version = (Get-Content "$package/VERSION").Trim()
+          Compress-Archive -Path "$package/*" -DestinationPath "release/XiaoQianDramaFactory-v$version-windows-x64.zip" -CompressionLevel Optimal
+          $zip = Get-Item "release/XiaoQianDramaFactory-v$version-windows-x64.zip"
+          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Set-Content release/SHA256SUMS.txt
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaoqiange-drama-factory-windows-${{ github.run_number }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release for version tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.zip
+            release/SHA256SUMS.txt
+          generate_release_notes: true

@@ -1,0 +1,17 @@
+{
+  "product": "小钱哥短剧工厂",
+  "version": "2.0.0",
+  "package_type": "windows-zip",
+  "installer": false,
+  "requires": {
+    "windows": [
+      "10",
+      "11"
+    ],
+    "node": "22 LTS"
+  },
+  "data": {
+    "app_data": "%APPDATA%\\小钱哥短剧工厂",
+    "media": "%USERPROFILE%\\Videos\\小钱哥短剧工厂"
+  }
+}

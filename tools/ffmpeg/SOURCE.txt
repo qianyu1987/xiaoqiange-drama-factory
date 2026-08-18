@@ -1,0 +1,22 @@
+FFmpeg Windows x64 LGPL shared build
+
+Distributor: BtbN/FFmpeg-Builds
+Archive: ffmpeg-master-latest-win64-lgpl-shared.zip
+Download: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl-shared.zip
+Downloaded: 2026-08-14
+SHA-256: 3e866b22cdf99ec7155fbf7f7c31a4d4bce962440df775384e684b9f02e34cbb
+
+The embedded configuration contains --enable-shared and --enable-libopenh264.
+It does not contain --enable-gpl or --enable-nonfree.
+
+FFmpeg source code and license information:
+https://ffmpeg.org/download.html
+https://github.com/FFmpeg/FFmpeg
+https://ffmpeg.org/legal.html
+
+BtbN build scripts and reproducible build information:
+https://github.com/BtbN/FFmpeg-Builds
+
+This product distributes the shared FFmpeg runtime under the terms contained
+in LICENSE.txt. Replacement compatible shared libraries may be placed beside
+ffmpeg.exe and ffprobe.exe.
