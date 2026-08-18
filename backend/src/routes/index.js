@@ -316,8 +316,14 @@ function setupRouter(cfg, db, log) {
   r.post('/storyboards/:id/upscale', storyboards.upscale);
 
   // ---------- audio ----------
-  r.post('/audio/extract', audio.extract);
-  r.post('/audio/extract/batch', audio.extractBatch);
+  // Customer jobs must keep the provider-native audio track. Do not expose
+  // the legacy local TTS endpoints even if a client calls them directly.
+  if (productService.flavor() === 'customer') {
+    r.use('/audio', (_req, res) => response.notFound(res, '接口不存在'));
+  } else {
+    r.post('/audio/extract', audio.extract);
+    r.post('/audio/extract/batch', audio.extractBatch);
+  }
 
   // ---------- settings ----------
   r.get('/settings/language', settings.getLanguage);

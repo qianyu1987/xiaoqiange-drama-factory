@@ -4,10 +4,14 @@ const taskService = require('../services/taskService');
 const videoClient = require('../services/videoClient');
 const { normalizeAspectRatioForApi } = videoClient;
 const { buildNativeAudioPrompt } = require('../services/nativeAudioPromptService');
+const productService = require('../services/productService');
 
 function routes(db, log) {
   return {
     agnes25Status: async (req, res) => {
+      if (productService.flavor() === 'customer') {
+        return response.notFound(res, '接口不存在');
+      }
       const config = videoClient.getDefaultVideoConfig(db, 'agnes-video-2.5');
       if (!config || String(config.api_protocol || '').toLowerCase() !== 'agnes_video') {
         return response.error(res, 409, 'AGNES_CONFIG_MISSING', '未配置 Agnes 视频渠道');
@@ -82,7 +86,8 @@ function routes(db, log) {
             bgmMotif: sb.bgm_motif || sb.bgm_prompt,
             soundEffects: sb.sound_effect,
           });
-          model = dramaMetadata.video_model || 'agnes-video-2.5';
+          model = dramaMetadata.video_model || 'xiaoqian-video';
+          if (productService.flavor() === 'customer') model = 'xiaoqian-video';
           duration = 10;
           let characterIds = [];
           try { characterIds = JSON.parse(sb.characters || '[]').map(Number).filter(Number.isFinite); } catch (_) {}

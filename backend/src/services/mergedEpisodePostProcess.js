@@ -214,6 +214,13 @@ async function runMergedEpisodePostProcess(db, log, opts) {
     return { ok: false, error: '无效合成参数' };
   }
 
+  // Customer output must retain the provider-native dialogue/audio. This
+  // guard stays below the route layer so a forged local request cannot
+  // re-enable the old TTS post-process path.
+  if (process.env.PRODUCT_FLAVOR === 'customer' && (wantDial || wantNarr)) {
+    return { ok: false, error: 'CUSTOMER_NATIVE_AUDIO_ONLY' };
+  }
+
   const needAudio = wantDial || wantNarr;
   if (!needAudio && !watermarkText) {
     return { ok: false, error: 'NO_POST_OPTS' };

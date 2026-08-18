@@ -45,8 +45,8 @@
     "name": "HHTC 视频调度",
     "base_url": "https://www.hhtc.top/app/v1/model-gateway/video",
     "api_key": "",
-    "model": ["agnes-video-v2.0"],
-    "default_model": "agnes-video-v2.0",
+    "model": ["xiaoqian-video"],
+    "default_model": "xiaoqian-video",
     "priority": 100,
     "is_default": true
   }

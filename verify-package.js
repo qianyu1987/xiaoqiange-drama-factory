@@ -10,6 +10,12 @@ const secretPatterns = [
   /\bcpk-[A-Za-z0-9._~-]{16,}\b/,
   /(?:api[_-]?key|appsecret|client_secret)\s*[:=]\s*["'][A-Za-z0-9._~-]{16,}["']/i,
 ];
+const customerModels = Object.freeze({
+  text: new Set(['xiaoqian-text']),
+  image: new Set(['xiaoqian-image']),
+  storyboard_image: new Set(['xiaoqian-image']),
+  video: new Set(['xiaoqian-video']),
+});
 
 function walk(dir) {
   if (!fs.existsSync(dir)) return;
@@ -31,8 +37,59 @@ function walk(dir) {
   }
 }
 
+function verifyCustomerModelContract() {
+  const configPath = path.join(root, 'backend', 'configs', 'customer-ai-configs.json');
+  if (!fs.existsSync(configPath)) {
+    failures.push('缺少客户模型别名配置: backend/configs/customer-ai-configs.json');
+    return;
+  }
+  let configs;
+  try {
+    configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (error) {
+    failures.push(`客户模型别名配置无法解析: ${error.message}`);
+    return;
+  }
+  if (!Array.isArray(configs)) {
+    failures.push('客户模型别名配置必须是数组');
+    return;
+  }
+  for (const config of configs) {
+    const serviceType = String(config?.service_type || '').trim();
+    if (serviceType === 'tts') {
+      failures.push('客户包不得包含 TTS 渠道配置');
+      continue;
+    }
+    const allowed = customerModels[serviceType];
+    if (!allowed) continue;
+    const models = Array.isArray(config.model) ? config.model : [config.model];
+    if (!models.length || models.some((model) => !allowed.has(String(model || '').trim()))) {
+      failures.push(`客户配置包含非产品模型别名: ${serviceType}`);
+    }
+    if (!allowed.has(String(config.default_model || '').trim())) {
+      failures.push(`客户配置默认模型不是产品别名: ${serviceType}`);
+    }
+    if (String(config.api_key || '').trim()) {
+      failures.push(`客户配置包含 API Key: ${serviceType}`);
+    }
+    if (!/^https:\/\/www\.hhtc\.top\/app\/v1\/model-gateway\//i.test(String(config.base_url || ''))) {
+      failures.push(`客户配置 Base URL 不是控制面网关: ${serviceType}`);
+    }
+  }
+  const presetSourcePath = path.join(root, 'backend', 'src', 'services', 'presetService.js');
+  if (fs.existsSync(presetSourcePath)) {
+    const source = fs.readFileSync(presetSourcePath, 'utf8');
+    for (const marker of ["video_model: 'xiaoqian-video'", "image_model: 'xiaoqian-image'", "image_prompt_models: ['xiaoqian-text']"]) {
+      if (!source.includes(marker)) failures.push(`客户预设缺少产品别名: ${marker}`);
+    }
+  }
+}
+
 if (!fs.existsSync(root)) failures.push(`客户包目录不存在: ${root}`);
-else walk(root);
+else {
+  walk(root);
+  verifyCustomerModelContract();
+}
 if (fs.existsSync(path.join(root, 'desktop.exe')) || fs.existsSync(path.join(root, 'electron.exe'))) failures.push('客户 ZIP 不得包含 EXE 安装器');
 if (failures.length) {
   console.error(failures.map((item) => `- ${item}`).join('\n'));
