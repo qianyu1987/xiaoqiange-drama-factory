@@ -202,8 +202,12 @@ function setupRouter(cfg, db, log) {
   r.put('/characters/:id/image-from-library', characters.imageFromLibrary);
   r.post('/characters/:id/add-to-library', characters.addToLibrary);
   r.post('/characters/:id/add-to-material-library', characters.addToMaterialLibrary);
-  r.post('/characters/:id/sd2-certify', characters.sd2Certify);
-  r.post('/characters/:id/sd2-certify/refresh', characters.sd2CertifyRefresh);
+  if (productService.flavor() === 'customer') {
+    r.use('/characters/:id/sd2-certify', (_req, res) => response.notFound(res, '接口不存在'));
+  } else {
+    r.post('/characters/:id/sd2-certify', characters.sd2Certify);
+    r.post('/characters/:id/sd2-certify/refresh', characters.sd2CertifyRefresh);
+  }
   r.post('/characters/:id/extract-from-image', characters.extractFromImage);
   r.post('/characters/:id/extract-anchors', characters.extractAnchors);
 
@@ -277,7 +281,11 @@ function setupRouter(cfg, db, log) {
 
   // ---------- videos ----------
   r.get('/videos', videos.list);
-  r.get('/videos/agnes-25-status', videos.agnes25Status);
+  if (productService.flavor() === 'customer') {
+    r.get('/videos/agnes-25-status', (_req, res) => response.notFound(res, '接口不存在'));
+  } else {
+    r.get('/videos/agnes-25-status', videos.agnes25Status);
+  }
   r.post('/videos', videos.create);
   r.post('/videos/image/:image_gen_id', videos.fromImage);
   r.post('/videos/episode/:episode_id/batch', videos.episodeBatch);
@@ -332,8 +340,12 @@ function setupRouter(cfg, db, log) {
   r.put('/settings/language', settings.updateLanguage);
   r.get('/settings/generation', settings.getGenerationSettings);
   r.put('/settings/generation', settings.updateGenerationSettings);
-  r.get('/settings/sd2-assets', settings.getSd2Settings);
-  r.put('/settings/sd2-assets', settings.updateSd2Settings);
+  if (productService.flavor() === 'customer') {
+    r.use('/settings/sd2-assets', (_req, res) => response.notFound(res, '接口不存在'));
+  } else {
+    r.get('/settings/sd2-assets', settings.getSd2Settings);
+    r.put('/settings/sd2-assets', settings.updateSd2Settings);
+  }
 
   // ---------- prompt overrides ----------
   r.get('/settings/prompts', promptOverrides.list);

@@ -1,0 +1,1 @@
+import{W as e}from"./index-8GEILZmM.js";const s={list(t){return e.get("/videos",{params:t||{}})},create(t){return e.post("/videos",t)}},n={get(){return e.get("/settings/generation")},update(t){return e.put("/settings/generation",t)}};export{n as g,s as v};

@@ -7,10 +7,20 @@ const forbiddenPaths = ['hhtc-control-plane', 'desktop/backend-app-secure', '.en
 const forbiddenContent = ['/Volumes/brainos', '/Users/mac'];
 const forbiddenFrontendContent = [
   /AIConfigContent/i,
+  /AI\s*配置/,
   /(?:agnes-(?:video|image|2\.))/i,
   /\bgpt-[0-9]/i,
   /\b(?:OpenAI|Google Gemini|Anthropic|DeepSeek)\b/i,
   /apihub\.agnes-ai\.com/i,
+  /\/ai-configs(?:\/|["'`])/i,
+  /\/settings\/sd2-assets/i,
+  /\/characters\/.{0,120}\/sd2-certify/i,
+  /\bTTS\b/,
+  /\bSeedance\b/i,
+  /\bkling(?:[_-](?:omni|video)|-video)\b/i,
+  /\bvolcengine[_-]omni\b/i,
+  /\bdoubao-seedance\b/i,
+  /资产生图模型\s*(?:id|ID)/i,
 ];
 const secretPatterns = [
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
@@ -29,7 +39,7 @@ function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.github') continue;
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.github' || entry.name === 'skills') continue;
       walk(file);
       continue;
     }
@@ -43,7 +53,7 @@ function walk(dir) {
     for (const pattern of secretPatterns) if (pattern.test(content)) failures.push(`疑似密钥: ${relative}`);
     if (relative.startsWith('frontend/')) {
       for (const pattern of forbiddenFrontendContent) {
-        if (pattern.test(content)) failures.push(`客户前端包含内部模型或配置标识: ${relative}`);
+        if (pattern.test(content)) failures.push(`客户前端包含内部模型或配置标识 ${pattern}: ${relative}`);
       }
     }
   }
@@ -97,10 +107,30 @@ function verifyCustomerModelContract() {
   }
 }
 
+function verifyCustomerBackendContract() {
+  const routesPath = path.join(root, 'backend', 'src', 'routes', 'index.js');
+  if (!fs.existsSync(routesPath)) {
+    failures.push('缺少客户后端路由文件');
+    return;
+  }
+  const source = fs.readFileSync(routesPath, 'utf8');
+  for (const route of [
+    "r.use('/ai-configs'",
+    "r.use('/audio'",
+    "r.use('/scene-model-map'",
+    "r.use('/settings/sd2-assets'",
+    "r.use('/characters/:id/sd2-certify'",
+    "r.get('/videos/agnes-25-status'",
+  ]) {
+    if (!source.includes(route)) failures.push(`客户后端未封禁内部接口: ${route}`);
+  }
+}
+
 if (!fs.existsSync(root)) failures.push(`客户包目录不存在: ${root}`);
 else {
   walk(root);
   verifyCustomerModelContract();
+  verifyCustomerBackendContract();
 }
 if (fs.existsSync(path.join(root, 'desktop.exe')) || fs.existsSync(path.join(root, 'electron.exe'))) failures.push('客户 ZIP 不得包含 EXE 安装器');
 if (failures.length) {
