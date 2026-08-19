@@ -1,20 +1,17 @@
-Copyright (c) 2026 小钱哥短剧工厂. All rights reserved.
+MIT License
 
-This repository and its contents are proprietary software.
+Copyright (c) 2026 XiaoQian Drama Factory
 
-You may inspect and evaluate the software for personal, non-production use.
-Production use, customer delivery, redistribution, sublicensing, resale,
-white-labeling, hosting for third parties, or removal of product attribution
-requires a separate written commercial license from the copyright owner.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-No API key, model quota, upstream account, music license, trademark right, or
-third-party content right is granted with this software. Third-party software
-and models remain subject to their respective licenses and terms.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM
-EXTENT PERMITTED BY LAW, THE COPYRIGHT OWNER SHALL NOT BE LIABLE FOR CLAIMS,
-DAMAGES, OR OTHER LIABILITY ARISING FROM USE OF THE SOFTWARE.
-
-Commercial licensing:
-QQ 3184958887
-https://www.hhtc.top
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.

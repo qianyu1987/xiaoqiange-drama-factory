@@ -3,6 +3,7 @@ const productService = require('../services/productService');
 const { getFfmpegPath, getFfprobePath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
 const cloudAgentService = require('../services/cloudAgentService');
 const backupService = require('../services/backupService');
+const updateService = require('../services/updateService');
 
 module.exports = function productRoutes(db, cfg) {
   return {
@@ -62,6 +63,17 @@ module.exports = function productRoutes(db, cfg) {
     restoreBackup(req, res) {
       try { response.success(res, backupService.scheduleRestore(cfg.database, req.body?.file_name)); }
       catch (err) { response.error(res, 400, 'RESTORE_FAILED', err.message); }
+    },
+    async updateStatus(req, res) {
+      response.success(res, await updateService.status());
+    },
+    async update(req, res) {
+      try {
+        const result = await updateService.stageAndSchedule(db, req.body?.version, cfg.database, backupService);
+        response.accepted(res, result);
+      } catch (err) {
+        response.error(res, 400, 'UPDATE_FAILED', err.message || '更新失败');
+      }
     },
     diagnostics(req, res) {
       try {

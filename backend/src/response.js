@@ -15,6 +15,10 @@ function created(res, data) {
   send(res, 201, { success: true, data });
 }
 
+function accepted(res, data) {
+  send(res, 202, { success: true, data });
+}
+
 function successWithPagination(res, items, total, page, pageSize) {
   const totalPages = Math.ceil(total / pageSize) || 0;
   send(res, 200, {
@@ -52,6 +56,7 @@ function internalError(res, message) {
 module.exports = {
   success,
   created,
+  accepted,
   successWithPagination,
   error,
   badRequest,

@@ -64,6 +64,8 @@ function setupRouter(cfg, db, log) {
   r.get('/product/backups', product.listBackups);
   r.post('/product/backups', product.createBackup);
   r.post('/product/backups/restore', product.restoreBackup);
+  r.get('/product/update-status', product.updateStatus);
+  r.post('/product/update', product.update);
   r.get('/product/diagnostics/download', product.diagnostics);
   r.use(productService.requireGenerationAccess(db));
 

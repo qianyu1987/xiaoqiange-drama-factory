@@ -1,6 +1,6 @@
 {
   "name": "LocalMiniDrama-backend",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "小钱哥短剧工厂本地生产服务",
   "main": "src/server.js",
   "scripts": {
