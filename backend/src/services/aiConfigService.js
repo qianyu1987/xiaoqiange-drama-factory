@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { applyDeepSeekConnectivityOptions } = require('./deepseekConfig');
+const customerModelPolicy = require('./customerModelPolicy');
 function modelToDb(model) {
   if (model == null) return null;
   if (Array.isArray(model)) return JSON.stringify(model);
@@ -228,7 +229,7 @@ function rowToConfig(r) {
       if (s.group_id) cfg.group_id = s.group_id;
     } catch (_) {}
   }
-  return cfg;
+  return customerModelPolicy.normalizeConfig(cfg, cfg.service_type);
 }
 
 /**

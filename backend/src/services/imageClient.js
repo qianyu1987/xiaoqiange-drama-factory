@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 const aiConfigService = require('./aiConfigService');
+const customerModelPolicy = require('./customerModelPolicy');
 const uploadService = require('./uploadService');
 const storageLayout = require('./storageLayout');
 const taskService = require('./taskService');
@@ -143,6 +144,8 @@ function agnesImageRequestSize(size) {
  */
 function getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType) {
   const serviceType = imageServiceType || 'image';
+  preferredModel = customerModelPolicy.forceModel(serviceType, preferredModel);
+  if (customerModelPolicy.customerMode()) preferredProvider = null;
   let configs = aiConfigService.listConfigs(db, serviceType);
   if (configs.length === 0 && serviceType === 'storyboard_image') {
     configs = aiConfigService.listConfigs(db, 'image');
@@ -175,8 +178,10 @@ function buildImageUrl(config) {
 }
 
 function getModelFromConfig(config, preferredModel) {
+  const forced = customerModelPolicy.forceModel(config?.service_type || 'image', preferredModel);
+  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
-  if (preferredModel && models.includes(preferredModel)) return preferredModel;
+  if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;
   return models[0] || 'dall-e-3';
 }
@@ -1760,6 +1765,9 @@ function createAndGenerateImage(db, log, opts) {
   else resourceId = String(dramaIdNum);
   const task = taskService.createTask(db, log, 'image_generation', resourceId);
   const taskId = task.id;
+  const customerMode = customerModelPolicy.customerMode();
+  const persistedProvider = customerMode ? 'hhtc' : (provider || 'openai');
+  const persistedModel = customerMode ? customerModelPolicy.forceModel('image', model) : (model || null);
 
   let imageGenId;
   try {
@@ -1770,10 +1778,10 @@ function createAndGenerateImage(db, log, opts) {
       dramaIdNum,
       charIdNum,
       sceneIdNum,
-      provider || 'openai',
+      persistedProvider,
       prompt || '',
       negRow,
-      model || null,
+      persistedModel,
       size || null,
       quality || null,
       taskId,
@@ -1786,7 +1794,7 @@ function createAndGenerateImage(db, log, opts) {
       const info = db.prepare(
         `INSERT INTO image_generations (drama_id, provider, prompt, model, size, quality, status, task_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
-      ).run(dramaIdNum, provider || 'openai', prompt || '', model || null, size || null, quality || null, taskId, now, now);
+      ).run(dramaIdNum, persistedProvider, prompt || '', persistedModel, size || null, quality || null, taskId, now, now);
       imageGenId = info.lastInsertRowid;
     } else {
       throw e;
@@ -1798,7 +1806,7 @@ function createAndGenerateImage(db, log, opts) {
       db.prepare('UPDATE image_generations SET status = ? WHERE id = ?').run('processing', imageGenId);
       const result = await callImageApi(db, log, {
         prompt,
-        model,
+        model: persistedModel,
         size,
         quality,
         drama_id: drama_id,

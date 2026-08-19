@@ -55,51 +55,47 @@ function normalizeCustomerPresetContent(input) {
   if (process.env.PRODUCT_FLAVOR !== 'customer') return { content: input, changed: false };
   const content = { ...(input || {}) };
   let changed = false;
-  if (/^(?:agnes-video-|gpt-video)/i.test(String(content.video_model || ''))) {
+  if (content.video_model !== 'xiaoqian-video') {
     content.video_model = 'xiaoqian-video';
     changed = true;
   }
-  if (Array.isArray(content.accepted_video_models)
-    && content.accepted_video_models.some((model) => /^(?:agnes-video-|gpt-video)/i.test(String(model || '')))) {
+  if (!Array.isArray(content.accepted_video_models)
+    || content.accepted_video_models.length !== 1
+    || content.accepted_video_models[0] !== 'xiaoqian-video') {
     content.accepted_video_models = ['xiaoqian-video'];
     changed = true;
   }
-  if (/^agnes-image-/i.test(String(content.image_model || ''))) {
+  if (content.image_model !== 'xiaoqian-image') {
     content.image_model = 'xiaoqian-image';
     changed = true;
   }
-  if (Array.isArray(content.image_prompt_models)
-    && content.image_prompt_models.some((model) => /^(?:gpt-|agnes-)/i.test(String(model || '')))) {
+  if (!Array.isArray(content.image_prompt_models)
+    || content.image_prompt_models.length !== 1
+    || content.image_prompt_models[0] !== 'xiaoqian-text') {
     content.image_prompt_models = ['xiaoqian-text'];
     changed = true;
   }
+  if (content.asset_image_model !== 'xiaoqian-image') { content.asset_image_model = 'xiaoqian-image'; changed = true; }
+  if (content.text_model !== 'xiaoqian-text') { content.text_model = 'xiaoqian-text'; changed = true; }
+  if (content.model_policy !== 'agnes-only-v1') { content.model_policy = 'agnes-only-v1'; changed = true; }
   return { content, changed };
 }
 
 function migrateCustomerPresets(db) {
   if (process.env.PRODUCT_FLAVOR !== 'customer') return;
-  const rows = db.prepare('SELECT preset_key, version, content FROM preset_versions').all();
-  const update = db.prepare('UPDATE preset_versions SET content = ? WHERE preset_key = ? AND version = ?');
-  const migrate = db.transaction(() => {
-    for (const row of rows) {
-      try {
-        const parsed = JSON.parse(row.content || '{}');
-        const normalized = normalizeCustomerPresetContent(parsed);
-        if (normalized.changed) update.run(JSON.stringify(normalized.content), row.preset_key, row.version);
-      } catch (_) {
-        // Leave malformed user data untouched; normal preset reads will report it.
-      }
-    }
-  });
-  migrate();
+  // Existing preset rows can be referenced by completed projects. Keep their
+  // stored history immutable; `getPreset` applies the customer policy only to
+  // future work, while the pipeline migration handles unfinished records.
 }
 
 function ensureDefaultPreset(db) {
   const now = new Date().toISOString();
   const insert = db.prepare(`INSERT OR IGNORE INTO preset_versions
     (preset_key, version, name, content, is_active, created_at) VALUES (?, ?, ?, ?, 1, ?)`)
-  insert.run(PRESET.preset_key, PRESET.version, PRESET.name, JSON.stringify(PRESET.content), now);
-  insert.run(LANDSCAPE_MYTH_PRESET.preset_key, LANDSCAPE_MYTH_PRESET.version, LANDSCAPE_MYTH_PRESET.name, JSON.stringify(LANDSCAPE_MYTH_PRESET.content), now);
+  const vertical = normalizeCustomerPresetContent(PRESET.content).content;
+  const landscape = normalizeCustomerPresetContent(LANDSCAPE_MYTH_PRESET.content).content;
+  insert.run(PRESET.preset_key, PRESET.version, PRESET.name, JSON.stringify(vertical), now);
+  insert.run(LANDSCAPE_MYTH_PRESET.preset_key, LANDSCAPE_MYTH_PRESET.version, LANDSCAPE_MYTH_PRESET.name, JSON.stringify(landscape), now);
   // Migrate shipped customer presets without replacing unrelated user edits
   // to style, pacing, subtitle rules, or other project-specific content.
   migrateCustomerPresets(db);
@@ -111,7 +107,8 @@ function getPreset(db, key, version) {
     ? db.prepare('SELECT * FROM preset_versions WHERE preset_key = ? AND is_active = 1 ORDER BY version DESC LIMIT 1').get(key)
     : db.prepare('SELECT * FROM preset_versions WHERE preset_key = ? AND version = ?').get(key, version);
   if (!row) return null;
-  return { ...row, content: JSON.parse(row.content || '{}'), is_active: !!row.is_active };
+  const content = JSON.parse(row.content || '{}');
+  return { ...row, content: normalizeCustomerPresetContent(content).content, is_active: !!row.is_active };
 }
 
 module.exports = {

@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const aiConfigService = require('./aiConfigService');
+const customerModelPolicy = require('./customerModelPolicy');
 let sharp; try { sharp = require('sharp'); } catch (_) { sharp = null; }
 const { uploadLocalImageToProxy, uploadToImageProxy } = require('./uploadService');
 const {
@@ -1130,6 +1131,7 @@ async function pollAgnesVideoJob(config, log, videoGenId, taskId) {
 
 // ??????????????????listConfigs ?? is_default DESC, priority DESC ??
 function getDefaultVideoConfig(db, preferredModel) {
+  preferredModel = customerModelPolicy.forceModel('video', preferredModel);
   const configs = aiConfigService.listConfigs(db, 'video');
   const active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
@@ -1210,8 +1212,10 @@ function normalizeVolcModel(name) {
 }
 
 function getModelFromConfig(config, preferredModel) {
+  const forced = customerModelPolicy.forceModel(config?.service_type || 'video', preferredModel);
+  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
-  if (preferredModel && models.includes(preferredModel)) return preferredModel;
+  if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;
   return models[0] || '';
 }
@@ -3139,7 +3143,8 @@ function applySeedance2CertifiedAssetUrlsToVideoOpts(db, log, opts) {
  * @returns {Promise<{ task_id?: string, video_url?: string, error?: string }>}
  */
 async function callVideoApi(db, log, opts) {
-  const { prompt, model: preferredModel, duration, aspect_ratio, resolution, seed, camera_fixed, watermark, image_url, video_gen_id } = opts;
+  const { prompt, model: requestedModel, duration, aspect_ratio, resolution, seed, camera_fixed, watermark, image_url, video_gen_id } = opts;
+  const preferredModel = customerModelPolicy.forceModel('video', requestedModel);
   const config = getDefaultVideoConfig(db, preferredModel);
   if (!config) {
     throw new Error('???????????AI ?????? video ?????????');

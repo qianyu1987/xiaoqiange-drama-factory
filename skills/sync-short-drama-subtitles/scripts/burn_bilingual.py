@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -12,12 +13,10 @@ import subprocess
 import sys
 
 
-OPENCHATCUT_BIN = Path(
-    "/Applications/OpenChatCut.app/Contents/Resources/app/node_modules/ffmpeg-static/ffmpeg"
-)
-OPENCHATCUT_PROBE = Path(
-    "/Applications/OpenChatCut.app/Contents/Resources/app/node_modules/@ffprobe-installer/darwin-arm64/ffprobe"
-)
+PACKAGE_ROOT = Path(__file__).resolve().parents[3]
+BUNDLED_FFMPEG_DIR = PACKAGE_ROOT / "tools" / "ffmpeg"
+BUNDLED_FFMPEG = BUNDLED_FFMPEG_DIR / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+BUNDLED_FFPROBE = BUNDLED_FFMPEG_DIR / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
 TIMESTAMP = re.compile(
     r"^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s+-->\s+"
     r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})$"
@@ -79,9 +78,11 @@ def ass_text(value: str) -> str:
     return value.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
 
 
-def find_binary(explicit: Path | None, name: str, fallback: Path) -> Path:
+def find_binary(explicit: Path | None, name: str, fallback: Path, env_name: str) -> Path:
     if explicit:
         result = explicit.expanduser().resolve()
+    elif os.environ.get(env_name):
+        result = Path(os.environ[env_name]).expanduser().resolve()
     elif shutil.which(name):
         result = Path(shutil.which(name) or "")
     else:
@@ -134,8 +135,8 @@ def main() -> int:
         if (zh_cue["start"], zh_cue["end"]) != (en_cue["start"], en_cue["end"]):
             raise SystemExit(f"Cue {index} timing mismatch")
 
-    ffmpeg = find_binary(args.ffmpeg, "ffmpeg", OPENCHATCUT_BIN)
-    ffprobe = find_binary(args.ffprobe, "ffprobe", OPENCHATCUT_PROBE)
+    ffmpeg = find_binary(args.ffmpeg, "ffmpeg", BUNDLED_FFMPEG, "XQG_FFMPEG_PATH")
+    ffprobe = find_binary(args.ffprobe, "ffprobe", BUNDLED_FFPROBE, "XQG_FFPROBE_PATH")
     output.parent.mkdir(parents=True, exist_ok=True)
     ass_path = (args.ass_output or output.with_suffix(".ass")).expanduser().resolve()
     write_ass(ass_path, zh, en, args)

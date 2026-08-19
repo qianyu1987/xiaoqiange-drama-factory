@@ -1,6 +1,7 @@
 // 与 Go pkg/ai + application/services/ai_service 对齐：读取 ai_service_configs，调用 OpenAI 兼容的 chat completions
 const aiConfigService = require('./aiConfigService');
 const { applyDeepSeekChatOptions } = require('./deepseekConfig');
+const customerModelPolicy = require('./customerModelPolicy');
 const https = require('https');
 const http = require('http');
 
@@ -209,11 +210,12 @@ function getDefaultConfig(db, serviceType) {
 }
 
 function getConfigForModel(db, serviceType, modelName) {
+  const requested = customerModelPolicy.forceModel(serviceType, modelName);
   const configs = aiConfigService.listConfigs(db, serviceType);
   for (const config of configs) {
     if (!config.is_active) continue;
     const models = Array.isArray(config.model) ? config.model : [config.model];
-    if (models.includes(modelName)) return config;
+    if (models.includes(requested)) return config;
   }
   return null;
 }
@@ -226,8 +228,10 @@ function buildChatUrl(config) {
 }
 
 function getModelFromConfig(config, preferredModel) {
+  const forced = customerModelPolicy.forceModel(config?.service_type || 'text', preferredModel);
+  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
-  if (preferredModel && models.includes(preferredModel)) return preferredModel;
+  if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;
   return models[0] || 'gpt-3.5-turbo';
 }
@@ -237,6 +241,7 @@ function getModelFromConfig(config, preferredModel) {
  * 返回 { config, modelOverride } 或 null（未配置时）
  */
 function getConfigFromModelMap(db, sceneKey) {
+  if (customerModelPolicy.customerMode()) return null;
   try {
     const row = db.prepare('SELECT * FROM ai_model_map WHERE key = ?').get(sceneKey);
     if (!row) return null;
@@ -255,7 +260,8 @@ function getConfigFromModelMap(db, sceneKey) {
 }
 
 async function generateText(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
-  const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, streamCallback = null, scene_key = null } = options;
+  const { model: requestedModel, temperature = 0.7, json_mode = false, min_max_tokens = null, streamCallback = null, scene_key = null } = options;
+  const preferredModel = customerModelPolicy.forceModel(serviceType, requestedModel);
 
   // F2: 若传入 scene_key，优先从 ai_model_map 查找对应的模型路由配置
   let config = null;
@@ -362,7 +368,8 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
  * @param {(delta: string) => void} onDelta 仅增量片段（UTF-8 字符串）
  */
 async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
-  const { model: preferredModel, temperature = 0.7, json_mode = false, min_max_tokens = null, scene_key = null } = options;
+  const { model: requestedModel, temperature = 0.7, json_mode = false, min_max_tokens = null, scene_key = null } = options;
+  const preferredModel = customerModelPolicy.forceModel(serviceType, requestedModel);
   let config = null;
   let routedModelOverride = null;
   if (scene_key) {
@@ -506,6 +513,11 @@ function resolveEntityImageSource(entity, cfg) {
  * 使用 OpenAI vision 消息格式（兼容 GPT-4o / Gemini openai-compat / Qwen-VL 等）。
  */
 async function generateTextWithVision(db, log, serviceType, userPrompt, systemPrompt, imageSource, options = {}) {
+  if (customerModelPolicy.customerMode()) {
+    throw Object.assign(new Error('当前订阅未验证图片识别能力，请手工填写图片描述后继续'), {
+      code: 'MANUAL_DESCRIPTION_REQUIRED',
+    });
+  }
   const fs = require('fs');
   const path = require('path');
 
@@ -538,7 +550,8 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   }
 
   // 复用 generateText 的配置查找逻辑
-  const { model: preferredModel, temperature = 0.3, max_tokens = 500 } = options;
+  const { model: requestedModel, temperature = 0.3, max_tokens = 500 } = options;
+  const preferredModel = customerModelPolicy.forceModel(serviceType, requestedModel);
   let config = preferredModel
     ? getConfigForModel(db, serviceType, preferredModel)
     : getDefaultConfig(db, serviceType);

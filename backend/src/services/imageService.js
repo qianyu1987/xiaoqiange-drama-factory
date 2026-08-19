@@ -60,6 +60,7 @@ const taskService = require('./taskService');
 const uploadService = require('./uploadService');
 const storageLayout = require('./storageLayout');
 const aiClient = require('./aiClient');
+const customerModelPolicy = require('./customerModelPolicy');
 const promptI18n = require('./promptI18n');
 
 /**
@@ -472,6 +473,9 @@ function create(db, log, req) {
   if (!reqSize && req.aspect_ratio) {
     reqSize = aspectRatioToSize(req.aspect_ratio) || null;
   }
+  const customerMode = customerModelPolicy.customerMode();
+  const persistedProvider = customerMode ? 'hhtc' : (req.provider || 'openai');
+  const persistedModel = customerMode ? customerModelPolicy.forceModel('image', req.model) : (req.model ?? null);
   const info = db.prepare(
     `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model, frame_type, reference_images, size, status, task_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
@@ -479,10 +483,10 @@ function create(db, log, req) {
     req.storyboard_id ?? null,
     Number(req.drama_id) || 0,
     sceneId,
-    req.provider || 'openai',
+    persistedProvider,
     mergedPrompt,
     req.negative_prompt ?? null,
-    req.model ?? null,
+    persistedModel,
     frameType,
     refImagesJson,
     reqSize,
@@ -530,7 +534,7 @@ async function processImageGeneration(db, log, imageGenId) {
     // An explicitly requested Agnes model must use the Agnes image channel,
     // including storyboard reference images. Otherwise the storyboard-only
     // default can silently route the Agnes model name to a different provider.
-    const explicitAgnesImage = /^agnes-image-/i.test(String(row.model || '').trim());
+    const explicitAgnesImage = customerModelPolicy.customerMode() || /^agnes-image-/i.test(String(row.model || '').trim());
     const imageServiceType = row.storyboard_id && !explicitAgnesImage ? 'storyboard_image' : 'image';
 
     // ── 四宫格模式：先生成4帧提示词，再拼装组合提示词 ──────────────────

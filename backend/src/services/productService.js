@@ -7,7 +7,7 @@ const localAuthStore = require('./localAuthStore');
 const PRODUCT = Object.freeze({
   name: '小钱哥短剧工厂',
   english_name: 'XiaoQian Drama Factory',
-  version: process.env.PRODUCT_VERSION || '2.0.3',
+  version: process.env.PRODUCT_VERSION || '2.0.4',
   cloud_base_url: process.env.HHTC_APP_BASE_URL || 'https://www.hhtc.top/app/v1',
   login_url: process.env.HHTC_LOGIN_URL || 'https://www.hhtc.top/login',
 });
@@ -43,9 +43,18 @@ function entitlement(db) {
   const now = Date.now();
   const expires = saved.expires_at ? Date.parse(saved.expires_at) : NaN;
   const grace = saved.offline_grace_until ? Date.parse(saved.offline_grace_until) : NaN;
-  const active = saved.active === true && (!Number.isFinite(expires) || expires > now || (Number.isFinite(grace) && grace > now));
+  const subscriptionActive = saved.active === true && (!Number.isFinite(expires) || expires > now || (Number.isFinite(grace) && grace > now));
+  const canGenerate = subscriptionActive && saved.can_generate !== false;
   const pending = saved.status === 'pending_credential' || saved.reason === 'CREDENTIAL_PENDING';
-  return { ...saved, active, reason: active ? null : pending ? 'CREDENTIAL_PENDING' : 'SUBSCRIPTION_EXPIRED' };
+  const incomplete = saved.reason === 'CREDENTIAL_CAPABILITY_INCOMPLETE' || saved.can_generate === false;
+  return {
+    ...saved,
+    active: canGenerate,
+    subscription_active: subscriptionActive,
+    can_generate: canGenerate,
+    data_access: saved.data_access === true || subscriptionActive || (Number.isFinite(grace) && grace > now),
+    reason: canGenerate ? null : pending ? 'CREDENTIAL_PENDING' : incomplete ? 'CREDENTIAL_CAPABILITY_INCOMPLETE' : 'SUBSCRIPTION_EXPIRED',
+  };
 }
 
 function loadStoredAuth() {
@@ -170,13 +179,16 @@ function requireGenerationAccess(db) {
     const current = entitlement(db);
     if (current.active) return next();
     const pending = current.reason === 'CREDENTIAL_PENDING';
+    const incomplete = current.reason === 'CREDENTIAL_CAPABILITY_INCOMPLETE';
     res.status(402).json({
       success: false,
       error: {
         code: current.reason || 'SUBSCRIPTION_REQUIRED',
         message: pending
           ? '设备已授权，生成服务正在配置；配置完成后 31 天订阅才开始计时'
-          : '订阅已到期，已有项目仍可预览和导出',
+          : incomplete
+            ? '独立凭据能力不完整，请联系管理员重新验证凭据'
+            : '订阅已到期，已有项目仍可预览和导出',
       },
       timestamp: new Date().toISOString(),
     });

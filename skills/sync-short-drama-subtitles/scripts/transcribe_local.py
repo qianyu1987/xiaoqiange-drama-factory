@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run local MLX Whisper with word timestamps and external-disk caches."""
+"""Run local MLX Whisper with word timestamps and a configurable cache."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ import subprocess
 import sys
 
 
-DEFAULT_CLI = Path("/Users/mac/.local/share/hhtc-subtitle-asr/bin/mlx_whisper")
-OPENCHATCUT_FFMPEG_DIR = Path(
-    "/Applications/OpenChatCut.app/Contents/Resources/app/node_modules/ffmpeg-static"
-)
+PACKAGE_ROOT = Path(__file__).resolve().parents[3]
+BUNDLED_FFMPEG_DIR = PACKAGE_ROOT / "tools" / "ffmpeg"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,10 +34,15 @@ def main() -> int:
     if not media.is_file():
         raise SystemExit(f"Media not found: {media}")
 
-    cli = args.cli or (Path(shutil.which("mlx_whisper")) if shutil.which("mlx_whisper") else DEFAULT_CLI)
+    cli_value = args.cli or shutil.which("mlx_whisper") or os.environ.get("XQG_WHISPER_CLI")
+    if not cli_value:
+        raise SystemExit(
+            "mlx_whisper is not installed. Put it on PATH or set XQG_WHISPER_CLI."
+        )
+    cli = Path(cli_value).expanduser().resolve()
     if not cli.is_file():
         raise SystemExit(
-            "mlx_whisper is not installed. Install mlx-whisper in the local ASR environment first."
+            f"mlx_whisper is not installed or is not a file: {cli}"
         )
 
     prompt = args.prompt
@@ -51,11 +54,17 @@ def main() -> int:
     output_name = args.output_name or f"{media.stem}-word-timed"
 
     env = os.environ.copy()
-    env["PATH"] = f"{OPENCHATCUT_FFMPEG_DIR}:{env.get('PATH', '')}"
-    external_cache = Path("/Volumes/brainos/MacStorage/Caches")
-    if external_cache.is_dir() and os.access(external_cache, os.W_OK):
-        env.setdefault("HF_HOME", str(external_cache / "huggingface"))
-        env.setdefault("XDG_CACHE_HOME", str(external_cache))
+    ffmpeg_dir_value = os.environ.get("OPENCHATCUT_FFMPEG_DIR") or os.environ.get("XQG_FFMPEG_DIR")
+    ffmpeg_dir = Path(ffmpeg_dir_value).expanduser() if ffmpeg_dir_value else BUNDLED_FFMPEG_DIR
+    if ffmpeg_dir.is_dir():
+        env["PATH"] = f"{ffmpeg_dir}{os.pathsep}{env.get('PATH', '')}"
+
+    cache_value = os.environ.get("XQG_MODEL_CACHE")
+    model_cache = Path(cache_value).expanduser() if cache_value else Path.home() / ".cache" / "xiaoqiange-drama-factory"
+    model_cache.mkdir(parents=True, exist_ok=True)
+    if os.access(model_cache, os.W_OK):
+        env.setdefault("HF_HOME", str(model_cache / "huggingface"))
+        env.setdefault("XDG_CACHE_HOME", str(model_cache))
 
     command = [
         str(cli),

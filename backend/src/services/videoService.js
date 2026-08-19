@@ -83,6 +83,7 @@ const { randomUUID } = require('crypto');
 const videoClient = require('./videoClient');
 const taskService = require('./taskService');
 const storageLayout = require('./storageLayout');
+const customerModelPolicy = require('./customerModelPolicy');
 const { getFfmpegPath, hasLocalFfmpeg } = require('../utils/ffmpegPath');
 const { h264Args } = require('../utils/h264Encoder');
 
@@ -287,7 +288,7 @@ async function processVideoGeneration(db, log, videoGenId) {
       log.error('Video generation failed', { id: videoGenId, error: result.error });
       return;
     }
-    if (result.actual_model) {
+    if (result.actual_model && !customerModelPolicy.customerMode()) {
       try {
         db.prepare('UPDATE video_generations SET model = ?, updated_at = ? WHERE id = ?').run(result.actual_model, now2, videoGenId);
         if (row.storyboard_id) {

@@ -39,6 +39,10 @@ function createApp() {
   // 厂商锁定模式：在迁移完成后同步 vendor_lock 配置
   const { applyVendorLock } = require('./services/aiConfigService');
   applyVendorLock(db, logger, config);
+  const customerPolicyMigration = pipelineService.migrateCustomerModelPolicy(db);
+  if (Object.values(customerPolicyMigration).some(Boolean)) {
+    logger.info('Applied customer Agnes-only policy migration', customerPolicyMigration);
+  }
   const log = logger;
 
   const app = express();

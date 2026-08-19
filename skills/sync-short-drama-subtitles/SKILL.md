@@ -46,13 +46,13 @@ rules when producing a final deliverable.
 
 ```bash
 python scripts/transcribe_local.py input.mp4 \
-  --output-dir /Volumes/brainos/CodexMedia/generated/<task>/asr \
+  --output-dir ./output/asr \
   --prompt-file approved-dialogue.txt
 ```
 
-The script uses the local MLX Whisper installation. It stores reproducible
-model caches on `/Volumes/brainos/MacStorage/Caches` when that volume is
-available and does not upload media or consume API balance.
+The script uses a local MLX Whisper installation. Set `XQG_WHISPER_CLI` when
+`mlx_whisper` is not on `PATH`, and optionally set `XQG_MODEL_CACHE` to choose
+the model cache directory. It does not upload media or consume API balance.
 
 ## Deterministic Render
 

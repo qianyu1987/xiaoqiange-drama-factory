@@ -52,7 +52,8 @@ function routes(db, log) {
         const now = new Date().toISOString();
         const dramaId = Number(body.drama_id) || 0;
         const storyboardId = body.storyboard_id != null ? Number(body.storyboard_id) : null;
-        const provider = body.provider || 'chatfire';
+        const customerMode = productService.flavor() === 'customer';
+        const provider = customerMode ? 'hhtc' : (body.provider || 'chatfire');
         let prompt = body.prompt || '';
         const style = (body.style || '').toString().trim();
         if (style) {
@@ -62,7 +63,7 @@ function routes(db, log) {
             prompt = prompt ? `${prompt}. Style: ${style}` : `Style: ${style}`;
           }
         }
-        let model = body.model ?? null;
+        let model = customerMode ? 'xiaoqian-video' : (body.model ?? null);
         let duration = body.duration ?? null;
         let dramaMetadata = {};
         if (dramaId) {
@@ -87,7 +88,7 @@ function routes(db, log) {
             soundEffects: sb.sound_effect,
           });
           model = dramaMetadata.video_model || 'xiaoqian-video';
-          if (productService.flavor() === 'customer') model = 'xiaoqian-video';
+          if (customerMode) model = 'xiaoqian-video';
           duration = 10;
           let characterIds = [];
           try { characterIds = JSON.parse(sb.characters || '[]').map(Number).filter(Number.isFinite); } catch (_) {}

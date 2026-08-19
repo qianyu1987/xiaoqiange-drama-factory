@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const presetService = require('./presetService');
+const customerModelPolicy = require('./customerModelPolicy');
 
 const STEPS = Object.freeze([
   ['story_brief', '故事简报'],
@@ -46,7 +47,7 @@ function listRuns(db, filters = {}) {
 }
 
 function defaultManifest(body, dramaId, episodeId, preset) {
-  return {
+  return customerModelPolicy.normalizeManifest({
     projectId: dramaId,
     episodeId,
     genre: body.genre || preset.name || '动画短剧',
@@ -67,7 +68,40 @@ function defaultManifest(body, dramaId, episodeId, preset) {
     speechRate: preset.content.speech_rate || null,
     subtitleProfile: preset.content.subtitle || null,
     includeBrandHashtag: body.include_brand_hashtag !== false,
-  };
+  });
+}
+
+function migrateCustomerModelPolicy(db) {
+  if (!customerModelPolicy.customerMode()) return { runs: 0, steps: 0, images: 0, videos: 0 };
+  const now = new Date().toISOString();
+  let runs = 0;
+  let steps = 0;
+  const updateRun = db.prepare('UPDATE pipeline_runs SET manifest=?, updated_at=? WHERE id=?');
+  const updateStep = db.prepare('UPDATE pipeline_steps SET payload=?, updated_at=? WHERE run_id=? AND step_key=?');
+  const transaction = db.transaction(() => {
+    const activeRuns = db.prepare("SELECT id, manifest FROM pipeline_runs WHERE status NOT IN ('completed','cancelled')").all();
+    for (const row of activeRuns) {
+      const current = parseJson(row.manifest, {});
+      const normalized = customerModelPolicy.normalizeManifest(current);
+      if (JSON.stringify(current) !== JSON.stringify(normalized)) {
+        updateRun.run(JSON.stringify(normalized), now, row.id);
+        runs += 1;
+      }
+      const pendingSteps = db.prepare("SELECT step_key, payload FROM pipeline_steps WHERE run_id=? AND status NOT IN ('completed','skipped')").all(row.id);
+      for (const step of pendingSteps) {
+        const payload = parseJson(step.payload, {});
+        const normalizedPayload = customerModelPolicy.normalizePipelinePayload(payload);
+        if (JSON.stringify(payload) !== JSON.stringify(normalizedPayload)) {
+          updateStep.run(JSON.stringify(normalizedPayload), now, row.id, step.step_key);
+          steps += 1;
+        }
+      }
+    }
+  });
+  transaction();
+  const images = db.prepare("UPDATE image_generations SET provider='hhtc', model='xiaoqian-image', updated_at=? WHERE status <> 'completed' AND deleted_at IS NULL AND (provider <> 'hhtc' OR model <> 'xiaoqian-image')").run(now).changes;
+  const videos = db.prepare("UPDATE video_generations SET provider='hhtc', model='xiaoqian-video', updated_at=? WHERE status <> 'completed' AND deleted_at IS NULL AND (provider <> 'hhtc' OR model <> 'xiaoqian-video')").run(now).changes;
+  return { runs, steps, images, videos };
 }
 
 function createRun(db, body, idempotencyKey) {
@@ -207,4 +241,4 @@ function recoverInterruptedRuns(db) {
   return db.prepare("UPDATE pipeline_runs SET status = 'interrupted', updated_at = ? WHERE status = 'running'").run(now).changes;
 }
 
-module.exports = { STEPS, createRun, getRun, listRuns, updateStep, command, reconcileRun, recoverInterruptedRuns };
+module.exports = { STEPS, createRun, getRun, listRuns, updateStep, command, reconcileRun, recoverInterruptedRuns, migrateCustomerModelPolicy };

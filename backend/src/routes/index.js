@@ -341,11 +341,15 @@ function setupRouter(cfg, db, log) {
   r.delete('/settings/prompts/:key', promptOverrides.reset);
 
   // ---------- scene model map ----------
-  r.get('/scene-model-map', sceneModelMap.list);
-  r.post('/scene-model-map', sceneModelMap.create);
-  r.get('/scene-model-map/:key', sceneModelMap.get);
-  r.put('/scene-model-map/:key', sceneModelMap.update);
-  r.delete('/scene-model-map/:key', sceneModelMap.delete);
+  if (productService.flavor() === 'customer') {
+    r.use('/scene-model-map', (_req, res) => response.notFound(res, '接口不存在'));
+  } else {
+    r.get('/scene-model-map', sceneModelMap.list);
+    r.post('/scene-model-map', sceneModelMap.create);
+    r.get('/scene-model-map/:key', sceneModelMap.get);
+    r.put('/scene-model-map/:key', sceneModelMap.update);
+    r.delete('/scene-model-map/:key', sceneModelMap.delete);
+  }
 
   // 启动时将已有的覆盖加载到 promptI18n 内存缓存
   try {
