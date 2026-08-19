@@ -44,7 +44,8 @@ jobs:
           $version = (Get-Content "$package/VERSION").Trim()
           Compress-Archive -Path "$package/*" -DestinationPath "release/XiaoQianDramaFactory-v$version-windows-x64.zip" -CompressionLevel Optimal
           $zip = Get-Item "release/XiaoQianDramaFactory-v$version-windows-x64.zip"
-          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Set-Content release/SHA256SUMS.txt
+          $line = "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" + "`n"
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), $line, [System.Text.UTF8Encoding]::new($false))
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
