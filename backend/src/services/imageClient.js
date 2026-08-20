@@ -891,6 +891,11 @@ function resolvePrivateDirectReference(value, filesBaseUrl, storageLocalPath) {
   return { filePath, mimeType, filename: path.basename(filePath) };
 }
 
+function imageRequestIdempotencyKey(options = {}, imageGenId = null) {
+  const supplied = options.idempotency_key ?? options.idempotencyKey;
+  return String(supplied || `local-mini-drama-image-${imageGenId || crypto.randomUUID()}`).trim().slice(0, 160);
+}
+
 function postMultipartWithTimeout(url, headers, body, timeoutMs = IMAGE_HTTP_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -989,6 +994,9 @@ async function callOpenAIImageEditDirect(config, log, opts) {
     response = await postMultipartWithTimeout(url, {
       Authorization: `Bearer ${config.api_key || ''}`,
       'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      ...(customerModelPolicy.customerMode()
+        ? { 'Idempotency-Key': imageRequestIdempotencyKey(opts, opts.image_gen_id) }
+        : {}),
     }, Buffer.concat(parts));
   } catch (error) {
     return { error: `私密直传网络请求失败: ${error.message}` };
@@ -1677,6 +1685,9 @@ async function callImageApi(db, log, opts) {
   const openaiCompatHeaders = {
     'Content-Type': 'application/json',
     Authorization: 'Bearer ' + (config.api_key || ''),
+    ...(customerModelPolicy.customerMode()
+      ? { 'Idempotency-Key': imageRequestIdempotencyKey(opts, image_gen_id) }
+      : {}),
   };
   let raw;
   let httpStatus;

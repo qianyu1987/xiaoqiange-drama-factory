@@ -30,6 +30,10 @@ jobs:
         shell: pwsh
         run: npm ci --omit=dev --prefix backend
 
+      - name: Test customer gateway accounting
+        shell: pwsh
+        run: node --test backend/test/customerGatewayIdempotency.test.js
+
       - name: Assemble ZIP contents
         shell: pwsh
         run: |

@@ -2,8 +2,20 @@
 const aiConfigService = require('./aiConfigService');
 const { applyDeepSeekChatOptions } = require('./deepseekConfig');
 const customerModelPolicy = require('./customerModelPolicy');
+const { randomUUID } = require('crypto');
 const https = require('https');
 const http = require('http');
+
+/**
+ * The HHTC customer gateway requires a request-level idempotency key for
+ * chargeable text calls. Generate it once per adapter invocation so any
+ * transport retry inside that invocation reuses the same key; callers that
+ * own a durable job can provide their key explicitly.
+ */
+function requestIdempotencyKey(options = {}, prefix = 'local-mini-drama-text') {
+  const supplied = options.idempotency_key ?? options.idempotencyKey;
+  return String(supplied || `${prefix}-${randomUUID()}`).trim().slice(0, 160);
+}
 
 /**
  * 非流式 POST，发送 JSON body，等待完整 HTTP 响应后返回。
@@ -262,6 +274,7 @@ function getConfigFromModelMap(db, sceneKey) {
 async function generateText(db, log, serviceType, userPrompt, systemPrompt, options = {}) {
   const { model: requestedModel, temperature = 0.7, json_mode = false, min_max_tokens = null, streamCallback = null, scene_key = null } = options;
   const preferredModel = customerModelPolicy.forceModel(serviceType, requestedModel);
+  const idempotencyKey = requestIdempotencyKey(options);
 
   // F2: 若传入 scene_key，优先从 ai_model_map 查找对应的模型路由配置
   let config = null;
@@ -343,7 +356,10 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
   body = applyDeepSeekChatOptions(config, body);
   const startMs = Date.now();
   log.info('AI generateText request', { url: url.slice(0, 60), model, max_tokens: finalMaxTokens ?? '(model default)', json_mode, stream: true });
-  const res = await postJSONStream(url, { Authorization: 'Bearer ' + (config.api_key || '') }, body, 60000, (receivedLen, event, accumulated) => {
+  const res = await postJSONStream(url, {
+    Authorization: 'Bearer ' + (config.api_key || ''),
+    ...(customerModelPolicy.customerMode() ? { 'Idempotency-Key': idempotencyKey } : {}),
+  }, body, 60000, (receivedLen, event, accumulated) => {
     if (event === 'first_token') {
       log.info('AI stream first token', { model, ttft_ms: Date.now() - startMs });
     } else if (receivedLen > 0 && receivedLen % 500 < 20) {
@@ -370,6 +386,7 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
 async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt, options = {}, onDelta) {
   const { model: requestedModel, temperature = 0.7, json_mode = false, min_max_tokens = null, scene_key = null } = options;
   const preferredModel = customerModelPolicy.forceModel(serviceType, requestedModel);
+  const idempotencyKey = requestIdempotencyKey(options);
   let config = null;
   let routedModelOverride = null;
   if (scene_key) {
@@ -450,7 +467,10 @@ async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt
   let lastLen = 0;
   const res = await postJSONStream(
     url,
-    { Authorization: 'Bearer ' + (config.api_key || '') },
+    {
+      Authorization: 'Bearer ' + (config.api_key || ''),
+      ...(customerModelPolicy.customerMode() ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body,
     silenceMs,
     (receivedLen, event, accumulated) => {
@@ -605,7 +625,10 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   let res;
   try {
     // 使用非流式请求：视觉分析响应短，且流式对推理模型（o1/o3/o4）和部分代理兼容性差
-    res = await postJSONNonStream(url, { Authorization: 'Bearer ' + (config.api_key || '') }, body, 120000);
+    res = await postJSONNonStream(url, {
+      Authorization: 'Bearer ' + (config.api_key || ''),
+      ...(customerModelPolicy.customerMode() ? { 'Idempotency-Key': requestIdempotencyKey(options) } : {}),
+    }, body, 120000);
   } catch (httpErr) {
     log.error('[Vision] HTTP 请求失败', { model, url: url.slice(0, 80), error: httpErr.message });
     throw httpErr;
@@ -721,4 +744,5 @@ module.exports = {
   EXTRACT_PROMPTS,
   isRefusalResponse,
   postJSONWithTimeout,
+  requestIdempotencyKey,
 };
