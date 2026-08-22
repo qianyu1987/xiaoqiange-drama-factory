@@ -145,13 +145,15 @@ function agnesImageRequestSize(size) {
 function getDefaultImageConfig(db, preferredModel, preferredProvider, imageServiceType) {
   const serviceType = imageServiceType || 'image';
   preferredModel = customerModelPolicy.forceModel(serviceType, preferredModel);
-  if (customerModelPolicy.customerMode()) preferredProvider = null;
   let configs = aiConfigService.listConfigs(db, serviceType);
   if (configs.length === 0 && serviceType === 'storyboard_image') {
     configs = aiConfigService.listConfigs(db, 'image');
   }
   let active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
+  if (customerModelPolicy.customerMode() && preferredModel === customerModelPolicy.aliasFor(serviceType)) {
+    return active.find((c) => c.is_default) || active[0];
+  }
   if (preferredProvider && String(preferredProvider).trim()) {
     const want = String(preferredProvider).trim().toLowerCase();
     const byProvider = active.filter((c) => (c.provider || '').toLowerCase() === want);
@@ -179,7 +181,6 @@ function buildImageUrl(config) {
 
 function getModelFromConfig(config, preferredModel) {
   const forced = customerModelPolicy.forceModel(config?.service_type || 'image', preferredModel);
-  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
   if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;
@@ -891,11 +892,6 @@ function resolvePrivateDirectReference(value, filesBaseUrl, storageLocalPath) {
   return { filePath, mimeType, filename: path.basename(filePath) };
 }
 
-function imageRequestIdempotencyKey(options = {}, imageGenId = null) {
-  const supplied = options.idempotency_key ?? options.idempotencyKey;
-  return String(supplied || `local-mini-drama-image-${imageGenId || crypto.randomUUID()}`).trim().slice(0, 160);
-}
-
 function postMultipartWithTimeout(url, headers, body, timeoutMs = IMAGE_HTTP_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -932,6 +928,11 @@ function providerErrorMessage(raw, statusCode) {
   } catch (_) {
     return `HTTP ${statusCode}`;
   }
+}
+
+function imageRequestIdempotencyKey(options = {}, imageGenId = null) {
+  const supplied = options.idempotency_key ?? options.idempotencyKey;
+  return String(supplied || `local-mini-drama-image-${imageGenId || crypto.randomUUID()}`).trim().slice(0, 160);
 }
 
 function imageUrlFromOpenAIResponse(data) {
@@ -1777,8 +1778,8 @@ function createAndGenerateImage(db, log, opts) {
   const task = taskService.createTask(db, log, 'image_generation', resourceId);
   const taskId = task.id;
   const customerMode = customerModelPolicy.customerMode();
-  const persistedProvider = customerMode ? 'hhtc' : (provider || 'openai');
-  const persistedModel = customerMode ? customerModelPolicy.forceModel('image', model) : (model || null);
+  const persistedProvider = provider || 'openai';
+  const persistedModel = model || null;
 
   let imageGenId;
   try {

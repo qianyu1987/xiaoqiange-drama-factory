@@ -50,6 +50,7 @@ jobs:
           $zip = Get-Item "release/XiaoQianDramaFactory-v$version-windows-x64.zip"
           $line = "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" + "`n"
           [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), $line, [System.Text.UTF8Encoding]::new($false))
+          node "$package/create-update-manifest.js" $version $zip.FullName "$((Get-Location).Path)/release/latest.json"
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
@@ -66,4 +67,5 @@ jobs:
           files: |
             release/*.zip
             release/SHA256SUMS.txt
+            release/latest.json
           generate_release_notes: true

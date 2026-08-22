@@ -3,6 +3,72 @@ const fs = require('fs');
 const path = require('path');
 const { applyDeepSeekConnectivityOptions } = require('./deepseekConfig');
 const customerModelPolicy = require('./customerModelPolicy');
+const aiCredentialStore = require('./aiCredentialStore');
+
+const MANAGED_GROUP = 'xiaoqiange-monthly-subscription';
+
+function isManagedConfig(config) {
+  return !!(config && (config.managed_group === MANAGED_GROUP || config.is_locked));
+}
+
+function normalizeSettingsForStorage(settings, managed) {
+  if (settings == null || managed) return { settings: settings ?? null, settings_ciphertext: null };
+  const value = typeof settings === 'string' ? settings : JSON.stringify(settings);
+  return { settings: null, settings_ciphertext: aiCredentialStore.encrypt(value) };
+}
+
+function decodeSettings(row) {
+  if (row.settings_ciphertext) return aiCredentialStore.decrypt(row.settings_ciphertext) || null;
+  return row.settings || null;
+}
+
+function decodeApiKey(row) {
+  if (row.managed_group === MANAGED_GROUP || row.is_locked) {
+    return process.env.PRODUCT_FLAVOR === 'customer' ? String(process.env.HHTC_APP_ACCESS_TOKEN || '') : String(row.api_key || '');
+  }
+  return aiCredentialStore.decrypt(row.api_key_ciphertext) || '';
+}
+
+function parseSettings(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return { ...value };
+  try { return JSON.parse(value) || {}; } catch (_) { return {}; }
+}
+
+function mergeSettingsPreservingSecrets(existingValue, nextValue) {
+  const existing = parseSettings(existingValue);
+  const next = parseSettings(nextValue);
+  const secretKeys = /(?:^|_)(?:api[_-]?key|access[_-]?key|secret[_-]?key|token|session|password)$/i;
+  for (const [key, value] of Object.entries(existing)) {
+    if (secretKeys.test(key) && next[key] == null) next[key] = value;
+  }
+  return Object.keys(next).length ? JSON.stringify(next) : null;
+}
+
+function migratePlainCredentials(db, log) {
+  const rows = db.prepare(`SELECT * FROM ai_service_configs
+    WHERE deleted_at IS NULL AND (api_key IS NOT NULL AND api_key <> '' OR settings IS NOT NULL)`).all();
+  const update = db.prepare(`UPDATE ai_service_configs
+    SET api_key = ?, api_key_ciphertext = ?, settings = ?, settings_ciphertext = ?,
+        credential_storage = ?, updated_at = ? WHERE id = ?`);
+  let changed = 0;
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      const managed = isManagedConfig(row);
+      if (managed) continue;
+      const apiKey = row.api_key_ciphertext ? '' : String(row.api_key || '');
+      const settings = row.settings_ciphertext ? null : row.settings;
+      if (!apiKey && !settings) continue;
+      update.run('', apiKey ? aiCredentialStore.encrypt(apiKey) : row.api_key_ciphertext || null,
+        null, settings ? aiCredentialStore.encrypt(settings) : row.settings_ciphertext || null,
+        'local-encrypted', new Date().toISOString(), row.id);
+      changed += 1;
+    }
+  });
+  tx();
+  if (changed) log?.info?.('Encrypted legacy AI credentials', { updated: changed });
+  return changed;
+}
 function modelToDb(model) {
   if (model == null) return null;
   if (Array.isArray(model)) return JSON.stringify(model);
@@ -36,6 +102,7 @@ function ensureSingleDefaultPerType(db) {
 }
 
 function listConfigs(db, serviceType) {
+  migratePlainCredentials(db);
   ensureSingleDefaultPerType(db);
   const order = 'ORDER BY is_default DESC, priority DESC, created_at DESC';
   let sql = 'SELECT * FROM ai_service_configs WHERE deleted_at IS NULL ' + order;
@@ -56,6 +123,7 @@ function clearOtherDefault(db, serviceType, exceptId) {
 }
 
 function getConfig(db, id) {
+  migratePlainCredentials(db);
   const row = db.prepare('SELECT * FROM ai_service_configs WHERE id = ? AND deleted_at IS NULL').get(id);
   return row ? rowToConfig(row) : null;
 }
@@ -101,23 +169,26 @@ function createConfig(db, log, req) {
     }
   }
   const defaultModel = req.default_model != null ? String(req.default_model).trim() || null : null;
+  const storedSettings = normalizeSettingsForStorage(req.settings, false);
   const info = db.prepare(
-    `INSERT INTO ai_service_configs (service_type, provider, api_protocol, name, base_url, api_key, model, default_model, endpoint, query_endpoint, priority, is_default, is_active, settings, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+    `INSERT INTO ai_service_configs (service_type, provider, api_protocol, name, base_url, api_key, api_key_ciphertext, settings, settings_ciphertext, model, default_model, endpoint, query_endpoint, priority, is_default, is_active, credential_storage, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'local-encrypted', ?, ?)`
   ).run(
     req.service_type || 'text',
     req.provider || '',
     req.api_protocol || '',
     req.name || '',
     req.base_url || '',
-    req.api_key || '',
+    '',
+    req.api_key ? aiCredentialStore.encrypt(req.api_key) : null,
+    storedSettings.settings,
+    storedSettings.settings_ciphertext,
     model,
     defaultModel,
     endpoint,
     queryEndpoint,
     req.priority ?? 0,
     req.is_default ? 1 : 0,
-    req.settings || null,
     now,
     now
   );
@@ -130,6 +201,14 @@ function createConfig(db, log, req) {
 function updateConfig(db, log, id, req) {
   const existing = getConfig(db, id);
   if (!existing) return null;
+  if (isManagedConfig(existing)) {
+    const forbidden = ['name', 'provider', 'api_protocol', 'base_url', 'api_key', 'model', 'default_model', 'priority', 'endpoint', 'query_endpoint', 'settings', 'is_active', 'is_default'];
+    if (forbidden.some((key) => Object.prototype.hasOwnProperty.call(req, key))) {
+      const error = new Error('本站月订阅配置不可修改');
+      error.code = 'AI_CONFIG_LOCKED';
+      throw error;
+    }
+  }
   const updates = [];
   const params = [];
   if (req.name != null) {
@@ -149,8 +228,8 @@ function updateConfig(db, log, id, req) {
     params.push(req.base_url);
   }
   if (req.api_key != null) {
-    updates.push('api_key = ?');
-    params.push(req.api_key);
+    updates.push('api_key = ?', 'api_key_ciphertext = ?', 'credential_storage = ?');
+    params.push('', req.api_key ? aiCredentialStore.encrypt(req.api_key) : null, 'local-encrypted');
   }
   if (req.model != null) {
     updates.push('model = ?');
@@ -173,8 +252,10 @@ function updateConfig(db, log, id, req) {
     params.push(req.query_endpoint || '');
   }
   if (req.settings != null) {
-    updates.push('settings = ?');
-    params.push(req.settings);
+    const mergedSettings = mergeSettingsPreservingSecrets(existing.settings, req.settings);
+    const storedSettings = normalizeSettingsForStorage(mergedSettings, false);
+    updates.push('settings = ?', 'settings_ciphertext = ?');
+    params.push(storedSettings.settings, storedSettings.settings_ciphertext);
   }
   if (typeof req.is_default === 'boolean') {
     updates.push('is_default = ?');
@@ -193,6 +274,12 @@ function updateConfig(db, log, id, req) {
 }
 
 function deleteConfig(db, log, id) {
+  const existing = getConfig(db, id);
+  if (isManagedConfig(existing)) {
+    const error = new Error('本站月订阅配置不可删除');
+    error.code = 'AI_CONFIG_LOCKED';
+    throw error;
+  }
   const now = new Date().toISOString();
   const result = db.prepare('UPDATE ai_service_configs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(now, id);
   if (result.changes === 0) return false;
@@ -200,8 +287,17 @@ function deleteConfig(db, log, id) {
   return true;
 }
 
+function setDefaultConfig(db, log, id) {
+  const existing = getConfig(db, id);
+  if (!existing) return null;
+  clearOtherDefault(db, existing.service_type, id);
+  db.prepare('UPDATE ai_service_configs SET is_default = 1, updated_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), id);
+  log.info('AI config default selected', { config_id: id });
+  return getConfig(db, id);
+}
+
 function rowToConfig(r) {
-  const customerCloudToken = process.env.PRODUCT_FLAVOR === 'customer' ? process.env.HHTC_APP_ACCESS_TOKEN : null;
   const cfg = {
     id: r.id,
     service_type: r.service_type,
@@ -209,7 +305,7 @@ function rowToConfig(r) {
     api_protocol: r.api_protocol || '',
     name: r.name,
     base_url: r.base_url,
-    api_key: customerCloudToken || r.api_key,
+    api_key: decodeApiKey(r),
     model: modelFromDb(r.model),
     default_model: r.default_model ? String(r.default_model).trim() : null,
     endpoint: r.endpoint,
@@ -217,14 +313,17 @@ function rowToConfig(r) {
     priority: r.priority ?? 0,
     is_default: !!r.is_default,
     is_active: r.is_active == null ? true : !!r.is_active,
-    settings: r.settings,
+    settings: decodeSettings(r),
+    managed_group: r.managed_group || null,
+    is_locked: !!r.is_locked,
+    credential_storage: r.credential_storage || (isManagedConfig(r) ? 'hhtc-runtime' : 'local-encrypted'),
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
   // TTS 配置：从 settings JSON 展开 voice_id / group_id 供 ttsService 直接读取
-  if (r.service_type === 'tts' && r.settings) {
+  if (r.service_type === 'tts' && cfg.settings) {
     try {
-      const s = JSON.parse(r.settings);
+      const s = JSON.parse(cfg.settings);
       if (s.voice_id) cfg.voice_id = s.voice_id;
       if (s.group_id) cfg.group_id = s.group_id;
     } catch (_) {}
@@ -540,13 +639,15 @@ function getVendorLockStatus(cfg) {
   return {
     enabled: !!(lock?.enabled),
     config_file: lock?.config_file || '',
+    mode: 'managed_plus_custom',
+    managed_group: MANAGED_GROUP,
+    custom_configs_allowed: true,
   };
 }
 
 /**
  * 启动时同步 vendor_lock 指定的配置文件到数据库。
- * - 软删除所有现有配置，按文件重新导入
- * - 若同 service_type + provider 在 DB 中已有记录，则保留用户修改过的 api_key
+ * - 只同步管理配置，保留用户自定义配置、默认状态和历史记录
  */
 function applyVendorLock(db, log, cfg) {
   const status = getVendorLockStatus(cfg);
@@ -580,43 +681,34 @@ function applyVendorLock(db, log, cfg) {
     return;
   }
 
-  // 内部版保留已有渠道 Key；客户版始终使用运行时 OAuth 令牌，不把上游 Key 写入本地数据库。
-  const existing = db.prepare('SELECT service_type, provider, api_key FROM ai_service_configs WHERE deleted_at IS NULL').all();
-  const savedKeys = new Map();
-  for (const row of existing) {
-    savedKeys.set(`${row.service_type}:${row.provider}`, row.api_key);
-  }
-
   const now = new Date().toISOString();
-  db.prepare('UPDATE ai_service_configs SET deleted_at = ? WHERE deleted_at IS NULL').run(now);
-
+  const find = db.prepare(`SELECT id FROM ai_service_configs
+    WHERE deleted_at IS NULL AND service_type = ? AND
+      (managed_group = ? OR (managed_group IS NULL AND is_locked = 0 AND provider = 'hhtc' AND base_url = ?))
+    ORDER BY CASE WHEN managed_group = ? THEN 0 ELSE 1 END, id LIMIT 1`);
+  const update = db.prepare(`UPDATE ai_service_configs SET provider=?, api_protocol=?, name=?, base_url=?,
+    api_key='', api_key_ciphertext=NULL, settings=?, settings_ciphertext=NULL,
+    model=?, default_model=?, endpoint=?, query_endpoint=?, managed_group=?, is_locked=1,
+    credential_storage='hhtc-runtime', is_active=1, updated_at=? WHERE id=?`);
+  const insert = db.prepare(`INSERT INTO ai_service_configs
+    (service_type, provider, api_protocol, name, base_url, api_key, api_key_ciphertext, model, default_model,
+     endpoint, query_endpoint, priority, is_default, is_active, managed_group, is_locked, credential_storage,
+    settings, settings_ciphertext, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, '', NULL, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'hhtc-runtime', ?, NULL, ?, ?)`);
   for (const item of configs) {
-    const mapKey = `${item.service_type}:${item.provider}`;
-    const apiKey = process.env.PRODUCT_FLAVOR === 'customer' ? '' : (savedKeys.get(mapKey) ?? item.api_key ?? '');
     const model = Array.isArray(item.model)
       ? JSON.stringify(item.model)
       : item.model ? JSON.stringify([item.model]) : '[]';
-    db.prepare(
-      `INSERT INTO ai_service_configs
-        (service_type, provider, api_protocol, name, base_url, api_key, model, default_model, endpoint, query_endpoint, priority, is_default, is_active, settings, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
-    ).run(
-      item.service_type || 'text',
-      item.provider || '',
-      item.api_protocol || '',
-      item.name || '',
-      item.base_url || '',
-      apiKey,
-      model,
-      item.default_model || null,
-      item.endpoint || '',
-      item.query_endpoint || '',
-      item.priority ?? 0,
-      item.is_default ? 1 : 0,
-      item.settings || null,
-      now,
-      now
-    );
+    const serviceType = item.service_type || 'text';
+    const existing = find.get(serviceType, MANAGED_GROUP, item.base_url || '', MANAGED_GROUP);
+    if (existing) {
+      update.run(item.provider || '', item.api_protocol || '', item.name || '', item.base_url || '', item.settings || null,
+        model, item.default_model || null, item.endpoint || '', item.query_endpoint || '', MANAGED_GROUP, now, existing.id);
+    } else {
+      insert.run(serviceType, item.provider || '', item.api_protocol || '', item.name || '', item.base_url || '', model,
+        item.default_model || null, item.endpoint || '', item.query_endpoint || '', item.priority ?? 0,
+        item.is_default ? 1 : 0, MANAGED_GROUP, item.settings || null, now, now);
+    }
   }
   for (const item of configs) {
     console.log(`[vendor_lock] loaded: service_type=${item.service_type} provider=${item.provider} api_protocol=${item.api_protocol || '(auto)'} endpoint=${item.endpoint || '(auto)'}`);
@@ -628,6 +720,11 @@ function applyVendorLock(db, log, cfg) {
  * 批量替换所有配置的 api_key（仅限锁定模式下使用）
  */
 function bulkUpdateApiKey(db, log, newKey) {
+  if (process.env.PRODUCT_FLAVOR === 'customer') {
+    const error = new Error('客户版不允许批量写入凭据');
+    error.code = 'AI_CONFIG_LOCKED';
+    throw error;
+  }
   const now = new Date().toISOString();
   const info = db.prepare(
     'UPDATE ai_service_configs SET api_key = ?, updated_at = ? WHERE deleted_at IS NULL'
@@ -642,8 +739,12 @@ module.exports = {
   createConfig,
   updateConfig,
   deleteConfig,
+  setDefaultConfig,
   testConnection,
   getVendorLockStatus,
   applyVendorLock,
   bulkUpdateApiKey,
+  isManagedConfig,
+  MANAGED_GROUP,
+  migratePlainCredentials,
 };

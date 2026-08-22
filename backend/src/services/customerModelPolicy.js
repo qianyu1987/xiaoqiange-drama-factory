@@ -28,11 +28,17 @@ function gatewayBase(capability) {
 
 function forceModel(serviceType, requestedModel) {
   if (!customerMode()) return requestedModel;
-  return aliasFor(serviceType) || requestedModel;
+  // Product aliases select the managed row. Any other model belongs to a
+  // user-owned config and must remain untouched; an absent/unknown model is
+  // resolved by the caller through that service type's default config.
+  const alias = aliasFor(serviceType);
+  if (!requestedModel || requestedModel === alias) return requestedModel;
+  return requestedModel;
 }
 
 function normalizeConfig(config, serviceType) {
   if (!customerMode()) return config;
+  if (config?.managed_group !== 'xiaoqiange-monthly-subscription' && !config?.is_locked) return config;
   const capability = capabilityFor(serviceType || config?.service_type);
   if (!capability) {
     return { ...(config || {}), api_key: '', model: [], default_model: null, is_active: false };
@@ -58,32 +64,13 @@ function normalizeConfig(config, serviceType) {
 
 function normalizeManifest(manifest) {
   if (!customerMode() || !manifest || typeof manifest !== 'object') return manifest;
-  return {
-    ...manifest,
-    model: PRODUCT_ALIASES.video,
-    imageModel: PRODUCT_ALIASES.image,
-    imagePromptModels: [PRODUCT_ALIASES.text],
-    acceptedVideoModels: [PRODUCT_ALIASES.video],
-    modelPolicy: 'agnes-only-v1',
-  };
+  // Historical manifests are read-only. New and unfinished work keeps the
+  // selected config/model so custom defaults can be used by the generators.
+  return manifest;
 }
 
 function normalizePipelinePayload(value) {
-  if (!customerMode() || value == null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(normalizePipelinePayload);
-  const output = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (['model', 'video_model', 'actual_video_model', 'accepted_video_models'].includes(key)) {
-      output[key] = Array.isArray(child) ? [PRODUCT_ALIASES.video] : PRODUCT_ALIASES.video;
-    } else if (['image_model', 'asset_image_model'].includes(key)) {
-      output[key] = PRODUCT_ALIASES.image;
-    } else if (['text_model', 'image_prompt_model', 'image_prompt_models'].includes(key)) {
-      output[key] = Array.isArray(child) ? [PRODUCT_ALIASES.text] : PRODUCT_ALIASES.text;
-    } else {
-      output[key] = normalizePipelinePayload(child);
-    }
-  }
-  return output;
+  return value;
 }
 
 module.exports = {

@@ -99,8 +99,10 @@ function migrateCustomerModelPolicy(db) {
     }
   });
   transaction();
-  const images = db.prepare("UPDATE image_generations SET provider='hhtc', model='xiaoqian-image', updated_at=? WHERE status <> 'completed' AND deleted_at IS NULL AND (provider <> 'hhtc' OR model <> 'xiaoqian-image')").run(now).changes;
-  const videos = db.prepare("UPDATE video_generations SET provider='hhtc', model='xiaoqian-video', updated_at=? WHERE status <> 'completed' AND deleted_at IS NULL AND (provider <> 'hhtc' OR model <> 'xiaoqian-video')").run(now).changes;
+  // Keep unfinished history intact. Retries resolve the current default
+  // configuration at execution time, so custom defaults are respected.
+  const images = 0;
+  const videos = 0;
   return { runs, steps, images, videos };
 }
 

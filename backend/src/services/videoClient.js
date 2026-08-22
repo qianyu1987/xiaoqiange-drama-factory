@@ -1135,6 +1135,9 @@ function getDefaultVideoConfig(db, preferredModel) {
   const configs = aiConfigService.listConfigs(db, 'video');
   const active = configs.filter((c) => c.is_active);
   if (active.length === 0) return null;
+  if (customerModelPolicy.customerMode() && preferredModel === customerModelPolicy.aliasFor('video')) {
+    return active.find((c) => c.is_default) || active[0];
+  }
   if (preferredModel) {
     for (const c of active) {
       const models = Array.isArray(c.model) ? c.model : (c.model != null ? [c.model] : []);
@@ -1213,7 +1216,6 @@ function normalizeVolcModel(name) {
 
 function getModelFromConfig(config, preferredModel) {
   const forced = customerModelPolicy.forceModel(config?.service_type || 'video', preferredModel);
-  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
   if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;

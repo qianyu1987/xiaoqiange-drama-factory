@@ -5,23 +5,6 @@ const root = path.resolve(process.argv[2] || path.join(__dirname, 'stage'));
 const failures = [];
 const forbiddenPaths = ['hhtc-control-plane', 'desktop/backend-app-secure', '.env', 'drama_generator.db', 'control.db'];
 const forbiddenContent = ['/Volumes/brainos', '/Users/mac'];
-const forbiddenFrontendContent = [
-  /AIConfigContent/i,
-  /AI\s*配置/,
-  /(?:agnes-(?:video|image|2\.))/i,
-  /\bgpt-[0-9]/i,
-  /\b(?:OpenAI|Google Gemini|Anthropic|DeepSeek)\b/i,
-  /apihub\.agnes-ai\.com/i,
-  /\/ai-configs(?:\/|["'`])/i,
-  /\/settings\/sd2-assets/i,
-  /\/characters\/.{0,120}\/sd2-certify/i,
-  /\bTTS\b/,
-  /\bSeedance\b/i,
-  /\bkling(?:[_-](?:omni|video)|-video)\b/i,
-  /\bvolcengine[_-]omni\b/i,
-  /\bdoubao-seedance\b/i,
-  /资产生图模型\s*(?:id|ID)/i,
-];
 const secretPatterns = [
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\bcpk-[A-Za-z0-9._~-]{16,}\b/,
@@ -51,11 +34,6 @@ function walk(dir) {
     const content = fs.readFileSync(file, 'utf8');
     for (const marker of forbiddenContent) if (content.includes(marker)) failures.push(`客户包包含开发环境路径: ${relative}`);
     for (const pattern of secretPatterns) if (pattern.test(content)) failures.push(`疑似密钥: ${relative}`);
-    if (relative.startsWith('frontend/')) {
-      for (const pattern of forbiddenFrontendContent) {
-        if (pattern.test(content)) failures.push(`客户前端包含内部模型或配置标识 ${pattern}: ${relative}`);
-      }
-    }
   }
 }
 
@@ -115,14 +93,14 @@ function verifyCustomerBackendContract() {
   }
   const source = fs.readFileSync(routesPath, 'utf8');
   for (const route of [
-    "r.use('/ai-configs'",
-    "r.use('/audio'",
-    "r.use('/scene-model-map'",
-    "r.use('/settings/sd2-assets'",
-    "r.use('/characters/:id/sd2-certify'",
-    "r.get('/videos/agnes-25-status'",
+    "r.get('/ai-configs'",
+    "r.post('/ai-configs'",
+    "r.get('/settings/sd2-assets'",
+    "r.get('/scene-model-map'",
+    "r.post('/audio/extract'",
+    "r.post('/characters/:id/sd2-certify'",
   ]) {
-    if (!source.includes(route)) failures.push(`客户后端未封禁内部接口: ${route}`);
+    if (!source.includes(route)) failures.push(`客户后端缺少开放接口: ${route}`);
   }
 }
 

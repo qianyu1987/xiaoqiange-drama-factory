@@ -121,20 +121,17 @@ function setupRouter(cfg, db, log) {
   r.delete('/dramas/:id', drama.deleteDrama);
 
   // ---------- ai-configs ----------
-  if (productService.flavor() === 'customer') {
-    r.use('/ai-configs', (_req, res) => response.notFound(res, '接口不存在'));
-  } else {
-    r.get('/ai-configs', aiConfig.list);
-    r.post('/ai-configs', aiConfig.create);
-    r.post('/ai-configs/test', aiConfig.testConnection);
-    r.post('/ai-configs/jimeng2-list-assets', aiConfig.listJimeng2MaterialAssets);
-    r.post('/ai-configs/model-ark-asset', aiConfig.modelArkAsset);
-    r.get('/ai-configs/vendor-lock', aiConfig.vendorLock);  // 必须在 /:id 之前
-    r.put('/ai-configs/bulk-update-key', aiConfig.bulkUpdateKey);  // 必须在 /:id 之前
-    r.get('/ai-configs/:id', aiConfig.get);
-    r.put('/ai-configs/:id', aiConfig.update);
-    r.delete('/ai-configs/:id', aiConfig.delete);
-  }
+  r.get('/ai-configs', aiConfig.list);
+  r.post('/ai-configs', aiConfig.create);
+  r.post('/ai-configs/test', aiConfig.testConnection);
+  r.post('/ai-configs/jimeng2-list-assets', aiConfig.listJimeng2MaterialAssets);
+  r.post('/ai-configs/model-ark-asset', aiConfig.modelArkAsset);
+  r.get('/ai-configs/vendor-lock', aiConfig.vendorLock);  // 必须在 /:id 之前
+  r.put('/ai-configs/bulk-update-key', aiConfig.bulkUpdateKey);  // handler still restricts internal mode
+  r.get('/ai-configs/:id', aiConfig.get);
+  r.post('/ai-configs/:id/default', aiConfig.setDefault);
+  r.put('/ai-configs/:id', aiConfig.update);
+  r.delete('/ai-configs/:id', aiConfig.delete);
 
   // ---------- generation (角色生成：AI + 入库 + 任务结果) ----------
   r.post('/generation/characters', (req, res) => {
@@ -202,12 +199,8 @@ function setupRouter(cfg, db, log) {
   r.put('/characters/:id/image-from-library', characters.imageFromLibrary);
   r.post('/characters/:id/add-to-library', characters.addToLibrary);
   r.post('/characters/:id/add-to-material-library', characters.addToMaterialLibrary);
-  if (productService.flavor() === 'customer') {
-    r.use('/characters/:id/sd2-certify', (_req, res) => response.notFound(res, '接口不存在'));
-  } else {
-    r.post('/characters/:id/sd2-certify', characters.sd2Certify);
-    r.post('/characters/:id/sd2-certify/refresh', characters.sd2CertifyRefresh);
-  }
+  r.post('/characters/:id/sd2-certify', characters.sd2Certify);
+  r.post('/characters/:id/sd2-certify/refresh', characters.sd2CertifyRefresh);
   r.post('/characters/:id/extract-from-image', characters.extractFromImage);
   r.post('/characters/:id/extract-anchors', characters.extractAnchors);
 
@@ -328,24 +321,16 @@ function setupRouter(cfg, db, log) {
   // ---------- audio ----------
   // Customer jobs must keep the provider-native audio track. Do not expose
   // the legacy local TTS endpoints even if a client calls them directly.
-  if (productService.flavor() === 'customer') {
-    r.use('/audio', (_req, res) => response.notFound(res, '接口不存在'));
-  } else {
-    r.post('/audio/extract', audio.extract);
-    r.post('/audio/extract/batch', audio.extractBatch);
-  }
+  r.post('/audio/extract', audio.extract);
+  r.post('/audio/extract/batch', audio.extractBatch);
 
   // ---------- settings ----------
   r.get('/settings/language', settings.getLanguage);
   r.put('/settings/language', settings.updateLanguage);
   r.get('/settings/generation', settings.getGenerationSettings);
   r.put('/settings/generation', settings.updateGenerationSettings);
-  if (productService.flavor() === 'customer') {
-    r.use('/settings/sd2-assets', (_req, res) => response.notFound(res, '接口不存在'));
-  } else {
-    r.get('/settings/sd2-assets', settings.getSd2Settings);
-    r.put('/settings/sd2-assets', settings.updateSd2Settings);
-  }
+  r.get('/settings/sd2-assets', settings.getSd2Settings);
+  r.put('/settings/sd2-assets', settings.updateSd2Settings);
 
   // ---------- prompt overrides ----------
   r.get('/settings/prompts', promptOverrides.list);
@@ -353,15 +338,11 @@ function setupRouter(cfg, db, log) {
   r.delete('/settings/prompts/:key', promptOverrides.reset);
 
   // ---------- scene model map ----------
-  if (productService.flavor() === 'customer') {
-    r.use('/scene-model-map', (_req, res) => response.notFound(res, '接口不存在'));
-  } else {
-    r.get('/scene-model-map', sceneModelMap.list);
-    r.post('/scene-model-map', sceneModelMap.create);
-    r.get('/scene-model-map/:key', sceneModelMap.get);
-    r.put('/scene-model-map/:key', sceneModelMap.update);
-    r.delete('/scene-model-map/:key', sceneModelMap.delete);
-  }
+  r.get('/scene-model-map', sceneModelMap.list);
+  r.post('/scene-model-map', sceneModelMap.create);
+  r.get('/scene-model-map/:key', sceneModelMap.get);
+  r.put('/scene-model-map/:key', sceneModelMap.update);
+  r.delete('/scene-model-map/:key', sceneModelMap.delete);
 
   // 启动时将已有的覆盖加载到 promptI18n 内存缓存
   try {

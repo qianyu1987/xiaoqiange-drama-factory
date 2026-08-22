@@ -9,13 +9,10 @@
 function loadAiJimeng2AuthRow(db) {
   if (!db) return null;
   try {
-    return db
-      .prepare(
-        `SELECT base_url, api_key FROM ai_service_configs
-         WHERE deleted_at IS NULL AND service_type = ? AND is_active = 1
-         ORDER BY is_default DESC, priority DESC, id ASC LIMIT 1`
-      )
-      .get('jimeng2_character_auth');
+    const aiConfigService = require('./aiConfigService');
+    const config = aiConfigService.listConfigs(db, 'jimeng2_character_auth')
+      .find((item) => item.is_active);
+    return config ? { base_url: config.base_url, api_key: config.api_key } : null;
   } catch (_) {
     return null;
   }

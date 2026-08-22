@@ -474,8 +474,8 @@ function create(db, log, req) {
     reqSize = aspectRatioToSize(req.aspect_ratio) || null;
   }
   const customerMode = customerModelPolicy.customerMode();
-  const persistedProvider = customerMode ? 'hhtc' : (req.provider || 'openai');
-  const persistedModel = customerMode ? customerModelPolicy.forceModel('image', req.model) : (req.model ?? null);
+  const persistedProvider = req.provider || 'openai';
+  const persistedModel = req.model ?? null;
   const info = db.prepare(
     `INSERT INTO image_generations (storyboard_id, drama_id, scene_id, provider, prompt, negative_prompt, model, frame_type, reference_images, size, status, task_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`

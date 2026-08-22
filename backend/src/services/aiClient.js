@@ -224,6 +224,11 @@ function getDefaultConfig(db, serviceType) {
 function getConfigForModel(db, serviceType, modelName) {
   const requested = customerModelPolicy.forceModel(serviceType, modelName);
   const configs = aiConfigService.listConfigs(db, serviceType);
+  if (customerModelPolicy.customerMode() && requested === customerModelPolicy.aliasFor(serviceType)) {
+    return configs.find((config) => config.is_active && config.is_default)
+      || configs.find((config) => config.is_active)
+      || null;
+  }
   for (const config of configs) {
     if (!config.is_active) continue;
     const models = Array.isArray(config.model) ? config.model : [config.model];
@@ -241,7 +246,6 @@ function buildChatUrl(config) {
 
 function getModelFromConfig(config, preferredModel) {
   const forced = customerModelPolicy.forceModel(config?.service_type || 'text', preferredModel);
-  if (customerModelPolicy.customerMode()) return forced;
   const models = Array.isArray(config.model) ? config.model : (config.model != null ? [config.model] : []);
   if (forced && models.includes(forced)) return forced;
   if (config.default_model && models.includes(config.default_model)) return config.default_model;
@@ -253,7 +257,6 @@ function getModelFromConfig(config, preferredModel) {
  * 返回 { config, modelOverride } 或 null（未配置时）
  */
 function getConfigFromModelMap(db, sceneKey) {
-  if (customerModelPolicy.customerMode()) return null;
   try {
     const row = db.prepare('SELECT * FROM ai_model_map WHERE key = ?').get(sceneKey);
     if (!row) return null;
@@ -288,12 +291,12 @@ async function generateText(db, log, serviceType, userPrompt, systemPrompt, opti
     }
   }
 
-  if (!config) {
+  if (!config && customerModelPolicy.customerMode()) {
     config = preferredModel
       ? getConfigForModel(db, serviceType, preferredModel)
       : getDefaultConfig(db, serviceType);
   }
-  if (!config && preferredModel === undefined) {
+  if (!config && customerModelPolicy.customerMode()) {
     // 兜底：如果前端传了 undefined，且没找到默认，尝试重新找一下（可能 serviceType 传值问题，或者数据库问题）
     config = getDefaultConfig(db, 'text');
   }
@@ -402,7 +405,7 @@ async function streamGenerateText(db, log, serviceType, userPrompt, systemPrompt
       ? getConfigForModel(db, serviceType, preferredModel)
       : getDefaultConfig(db, serviceType);
   }
-  if (!config && preferredModel === undefined) {
+  if (!config) {
     config = getDefaultConfig(db, 'text');
   }
   if (!config) {
@@ -575,7 +578,7 @@ async function generateTextWithVision(db, log, serviceType, userPrompt, systemPr
   let config = preferredModel
     ? getConfigForModel(db, serviceType, preferredModel)
     : getDefaultConfig(db, serviceType);
-  if (!config) config = getDefaultConfig(db, 'text');
+  if (!config && customerModelPolicy.customerMode()) config = getDefaultConfig(db, serviceType);
   if (!config) throw new Error(`未配置文本模型，请在「AI 配置」中添加 ${serviceType} 类型的配置`);
   const model = getModelFromConfig(config, preferredModel);
   const url = buildChatUrl(config);

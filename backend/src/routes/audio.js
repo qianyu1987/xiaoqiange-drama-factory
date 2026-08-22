@@ -1,13 +1,7 @@
 const response = require('../response');
 const path = require('path');
-const productService = require('../services/productService');
 
 function routes(db, log, cfg) {
-  function rejectCustomerTts(res) {
-    if (productService.flavor() !== 'customer') return false;
-    response.notFound(res, '接口不存在');
-    return true;
-  }
 
   function getStoragePath() {
     const loadConfig = require('../config').loadConfig;
@@ -20,7 +14,6 @@ function routes(db, log, cfg) {
   return {
     /** 为单条分镜生成 TTS：对白 → audio_local_path；旁白 → narration_audio_local_path（body.tts_kind === 'narration'） */
     extract: async (req, res) => {
-      if (rejectCustomerTts(res)) return;
       const { storyboard_id, text, tts_kind } = req.body || {};
       if (!text && !storyboard_id) return response.badRequest(res, '请提供 storyboard_id 或 text');
       const kind = String(tts_kind || 'dialogue').toLowerCase() === 'narration' ? 'narration' : 'dialogue';
@@ -72,7 +65,6 @@ function routes(db, log, cfg) {
 
     /** 批量为多条分镜生成 TTS */
     extractBatch: async (req, res) => {
-      if (rejectCustomerTts(res)) return;
       const { storyboard_ids } = req.body || {};
       if (!Array.isArray(storyboard_ids) || storyboard_ids.length === 0) {
         return response.badRequest(res, 'storyboard_ids 不能为空');

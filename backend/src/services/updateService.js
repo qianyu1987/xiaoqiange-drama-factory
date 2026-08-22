@@ -15,6 +15,25 @@ const ALLOWED_DOWNLOAD_HOSTS = new Set([
 
 let manifestCache = { value: null, expiresAt: 0 };
 
+async function fetchGithubManifest() {
+  const releaseResponse = await fetch('https://api.github.com/repos/qianyu1987/xiaoqiange-drama-factory/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'xiaoqiange-drama-updater' },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!releaseResponse.ok) throw new Error('GitHub 更新信息暂时不可用');
+  const release = await releaseResponse.json();
+  const asset = (Array.isArray(release.assets) ? release.assets : []).find((item) => item.name === 'latest.json');
+  if (!asset?.browser_download_url) throw new Error('GitHub 更新清单尚未发布');
+  const manifestResponse = await fetch(asset.browser_download_url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'xiaoqiange-drama-updater' },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!manifestResponse.ok) throw new Error('GitHub 更新清单读取失败');
+  const manifest = validateManifest(await manifestResponse.json());
+  if (String(release.tag_name || '').replace(/^v/i, '') !== manifest.version) throw new Error('GitHub 更新版本不一致');
+  return manifest;
+}
+
 function versionParts(value) {
   return String(value || '').replace(/^v/i, '').split('.').map((part) => Number(part.replace(/\D.*$/, '')) || 0);
 }
@@ -64,13 +83,18 @@ function manifestUrl() {
 
 async function fetchManifest({ force = false } = {}) {
   if (!force && manifestCache.value && manifestCache.expiresAt > Date.now()) return manifestCache.value;
-  const response = await fetch(manifestUrl(), {
+  const hhtcRequest = fetch(manifestUrl(), {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(6000),
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success === false) throw new Error('HHTC 更新信息暂时不可用');
+    return validateManifest(payload.data || payload);
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) throw new Error('更新信息暂时不可用');
-  const manifest = validateManifest(payload.data || payload);
+  const results = await Promise.allSettled([hhtcRequest, fetchGithubManifest()]);
+  const manifests = results.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+  if (!manifests.length) throw new Error('更新信息暂时不可用');
+  const manifest = manifests.sort((left, right) => compareVersions(right.version, left.version))[0];
   manifestCache = { value: manifest, expiresAt: Date.now() + 15 * 60 * 1000 };
   return manifest;
 }

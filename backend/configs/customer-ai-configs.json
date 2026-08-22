@@ -10,7 +10,10 @@
     "default_model": "xiaoqian-text",
     "endpoint": "/chat/completions",
     "priority": 100,
-    "is_default": true
+    "is_default": true,
+    "managed_group": "xiaoqiange-monthly-subscription",
+    "is_locked": true,
+    "credential_storage": "hhtc-runtime"
   },
   {
     "service_type": "image",
@@ -23,7 +26,10 @@
     "default_model": "xiaoqian-image",
     "endpoint": "/images/generations",
     "priority": 100,
-    "is_default": true
+    "is_default": true,
+    "managed_group": "xiaoqiange-monthly-subscription",
+    "is_locked": true,
+    "credential_storage": "hhtc-runtime"
   },
   {
     "service_type": "storyboard_image",
@@ -36,7 +42,10 @@
     "default_model": "xiaoqian-image",
     "endpoint": "/images/generations",
     "priority": 100,
-    "is_default": true
+    "is_default": true,
+    "managed_group": "xiaoqiange-monthly-subscription",
+    "is_locked": true,
+    "credential_storage": "hhtc-runtime"
   },
   {
     "service_type": "video",
@@ -48,6 +57,9 @@
     "model": ["xiaoqian-video"],
     "default_model": "xiaoqian-video",
     "priority": 100,
-    "is_default": true
+    "is_default": true,
+    "managed_group": "xiaoqiange-monthly-subscription",
+    "is_locked": true,
+    "credential_storage": "hhtc-runtime"
   }
 ]
