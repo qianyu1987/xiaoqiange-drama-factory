@@ -37,13 +37,15 @@ async function main() {
   const entries = fs.readdirSync(staging);
   const packageRoot = entries.length === 1 && fs.statSync(path.join(staging, entries[0])).isDirectory() ? path.join(staging, entries[0]) : staging;
   if (!fs.existsSync(path.join(packageRoot, 'VERSION')) || !fs.existsSync(path.join(packageRoot, 'start.bat'))) throw new Error('更新包不是有效的客户包');
+  const replaceable = ['backend', 'frontend', 'tools', 'start.bat', 'stop.bat', 'launcher.js', 'update-runner.js', 'README.md', 'LICENSE', 'VERSION', 'PACKAGE-MANIFEST.json', 'docs'];
+  const packageEntries = replaceable.filter((name) => fs.existsSync(path.join(packageRoot, name)));
   fs.mkdirSync(backup, { recursive: true });
-  for (const name of ['backend', 'frontend', 'tools', 'start.bat', 'stop.bat', 'launcher.js', 'update-runner.js', 'README.md', 'LICENSE', 'VERSION', 'PACKAGE-MANIFEST.json', 'docs']) {
+  for (const name of packageEntries) {
     const source = path.join(root, name);
     if (fs.existsSync(source)) fs.renameSync(source, path.join(backup, name));
   }
   try {
-    for (const name of ['backend', 'frontend', 'tools', 'start.bat', 'stop.bat', 'launcher.js', 'update-runner.js', 'README.md', 'LICENSE', 'VERSION', 'PACKAGE-MANIFEST.json', 'docs']) {
+    for (const name of packageEntries) {
       const source = path.join(packageRoot, name);
       if (fs.existsSync(source)) copyDirectory(source, path.join(root, name));
     }
@@ -52,7 +54,7 @@ async function main() {
     const restart = spawn(process.env.ComSpec || 'cmd.exe', ['/c', 'start', '', path.join(root, 'start.bat')], { detached: true, stdio: 'ignore', windowsHide: true });
     restart.unref();
   } catch (error) {
-    for (const name of ['backend', 'frontend', 'tools', 'start.bat', 'stop.bat', 'launcher.js', 'update-runner.js', 'README.md', 'LICENSE', 'VERSION', 'PACKAGE-MANIFEST.json', 'docs']) {
+    for (const name of packageEntries) {
       fs.rmSync(path.join(root, name), { recursive: true, force: true });
       const old = path.join(backup, name);
       if (fs.existsSync(old)) fs.renameSync(old, path.join(root, name));

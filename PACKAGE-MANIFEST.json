@@ -1,6 +1,6 @@
 {
   "product": "小钱哥短剧工厂",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "package_type": "windows-zip",
   "installer": false,
   "requires": {

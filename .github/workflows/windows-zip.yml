@@ -62,7 +62,7 @@ jobs:
           Compress-Archive -Path "$bootstrap/*" -DestinationPath $bootstrapZip -CompressionLevel Optimal
           $bootstrapLine = "$((Get-FileHash $bootstrapZip -Algorithm SHA256).Hash.ToLower())  $((Get-Item $bootstrapZip).Name)" + "`n"
           [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), $line + $bootstrapLine, [System.Text.UTF8Encoding]::new($false))
-          node "$package/create-update-manifest.js" $version $bootstrapZip "$((Get-Location).Path)/release/latest.json"
+          node "$package/create-update-manifest.js" $version $zip.FullName "$((Get-Location).Path)/release/latest.json"
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
