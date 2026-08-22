@@ -1,1 +1,0 @@
-import{Z as s}from"./index-BYu-zyey.js";const r={list(e){return s.get("/videos",{params:e||{}})},create(e){return s.post("/videos",e)},agnes25Status(){return s.get("/videos/agnes-25-status")}};export{r as v};
