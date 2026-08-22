@@ -7,7 +7,7 @@ const localAuthStore = require('./localAuthStore');
 const PRODUCT = Object.freeze({
   name: '小钱哥短剧工厂',
   english_name: 'XiaoQian Drama Factory',
-  version: process.env.PRODUCT_VERSION || '2.0.11',
+  version: process.env.PRODUCT_VERSION || '2.0.12',
   cloud_base_url: process.env.HHTC_APP_BASE_URL || 'https://www.hhtc.top/app/v1',
   login_url: process.env.HHTC_LOGIN_URL || 'https://www.hhtc.top/login',
 });

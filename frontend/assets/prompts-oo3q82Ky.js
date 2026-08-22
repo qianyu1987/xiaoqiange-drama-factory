@@ -1,1 +1,0 @@
-import{Z as e}from"./index-DN2VX9FV.js";const n={list(){return e.get("/settings/prompts")},update(t,s){return e.put(`/settings/prompts/${t}`,{content:s})},reset(t){return e.delete(`/settings/prompts/${t}`)}},p={get(){return e.get("/settings/generation")},update(t){return e.put("/settings/generation",t)}};export{p as g,n as p};
