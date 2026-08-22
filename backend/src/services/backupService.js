@@ -104,7 +104,7 @@ function diagnosticPackage(db, cfg) {
     try { counts[table] = db.prepare(`SELECT COUNT(*) count FROM "${table.replace(/"/g, '""')}"`).get().count; } catch (_) {}
   }
   zip.addFile('diagnostic.json', Buffer.from(JSON.stringify({
-    product: '小钱哥短剧工厂', version: process.env.PRODUCT_VERSION || '2.0.8', flavor: process.env.PRODUCT_FLAVOR || 'internal',
+    product: '小钱哥短剧工厂', version: process.env.PRODUCT_VERSION || '2.0.9', flavor: process.env.PRODUCT_FLAVOR || 'internal',
     platform: process.platform, arch: process.arch, node: process.version, created_at: new Date().toISOString(), table_counts: counts,
   }, null, 2)));
   const configCopy = JSON.parse(JSON.stringify(cfg || {}));

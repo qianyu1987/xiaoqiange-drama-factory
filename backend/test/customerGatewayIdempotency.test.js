@@ -105,3 +105,4 @@ test('customer text and image calls send stable gateway idempotency keys', async
   assert.equal(JSON.parse(textRequest.body).model, 'xiaoqian-text');
   assert.equal(JSON.parse(imageRequest.body).model, 'xiaoqian-image');
 });
+

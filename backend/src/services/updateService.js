@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const { promisify } = require('util');
 
 const DEFAULT_MANIFEST_URL = 'https://www.hhtc.top/app/v1/desktop-updates/stable/latest.json';
 const MAX_PACKAGE_BYTES = 512 * 1024 * 1024;
@@ -12,6 +13,7 @@ const ALLOWED_DOWNLOAD_HOSTS = new Set([
   'release-assets.githubusercontent.com',
   'github-releases.githubusercontent.com',
 ]);
+const execFileAsync = promisify(execFile);
 
 let manifestCache = { value: null, expiresAt: 0 };
 
@@ -115,27 +117,87 @@ function sha256File(file) {
   });
 }
 
-async function downloadPackage(url, target) {
-  const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10 * 60 * 1000) });
-  if (!response.ok) throw new Error(`更新包下载失败 (${response.status})`);
-  const finalUrl = new URL(response.url || url);
-  if (finalUrl.protocol !== 'https:' || !ALLOWED_DOWNLOAD_HOSTS.has(finalUrl.hostname.toLowerCase())) throw new Error('更新包跳转地址不受信任');
-  const length = Number(response.headers.get('content-length') || 0);
-  if (length > MAX_PACKAGE_BYTES) throw new Error('更新包超过允许大小');
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const file = fs.createWriteStream(target, { mode: 0o600 });
-  let total = 0;
-  try {
-    if (!response.body) throw new Error('更新包内容为空');
-    for await (const chunk of response.body) {
-      total += chunk.length;
-      if (total > MAX_PACKAGE_BYTES) throw new Error('更新包超过允许大小');
-      if (!file.write(chunk)) await new Promise((resolve) => file.once('drain', resolve));
-    }
-  } finally {
-    await new Promise((resolve) => file.end(resolve));
+function assertTrustedDownloadUrl(value) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== 'https:' || !ALLOWED_DOWNLOAD_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new Error('更新包跳转地址不受信任');
   }
-  if (!total) throw new Error('更新包内容为空');
+  return parsed;
+}
+
+function temporaryDownloadPath(target) {
+  return `${target}.part-${process.pid}-${Date.now()}`;
+}
+
+async function downloadWithFetch(url, target) {
+  const temp = temporaryDownloadPath(target);
+  try {
+    const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10 * 60 * 1000) });
+    if (!response.ok) throw new Error(`更新包下载失败 (${response.status})`);
+    assertTrustedDownloadUrl(response.url || url);
+    const length = Number(response.headers.get('content-length') || 0);
+    if (length > MAX_PACKAGE_BYTES) throw new Error('更新包超过允许大小');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const file = fs.createWriteStream(temp, { mode: 0o600 });
+    let total = 0;
+    try {
+      if (!response.body) throw new Error('更新包内容为空');
+      for await (const chunk of response.body) {
+        total += chunk.length;
+        if (total > MAX_PACKAGE_BYTES) throw new Error('更新包超过允许大小');
+        if (!file.write(chunk)) await new Promise((resolve) => file.once('drain', resolve));
+      }
+    } finally {
+      await new Promise((resolve) => file.end(resolve));
+    }
+    if (!total) throw new Error('更新包内容为空');
+    fs.renameSync(temp, target);
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
+}
+
+async function downloadWithCurl(url, target) {
+  if (process.platform !== 'win32') throw new Error('系统未提供 Windows 备用下载器');
+  const temp = temporaryDownloadPath(target);
+  try {
+    const result = await execFileAsync('curl.exe', [
+      '--fail', '--location', '--retry', '3', '--retry-delay', '2',
+      '--connect-timeout', '15', '--max-time', '900', '--silent', '--show-error',
+      '--output', temp, '--write-out', '%{url_effective}', url,
+    ], { windowsHide: true, maxBuffer: 16 * 1024 });
+    assertTrustedDownloadUrl(String(result.stdout || '').trim() || url);
+    const size = fs.statSync(temp).size;
+    if (!size) throw new Error('更新包内容为空');
+    if (size > MAX_PACKAGE_BYTES) throw new Error('更新包超过允许大小');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.renameSync(temp, target);
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
+}
+
+function readableDownloadError(error) {
+  const message = String(error?.message || '');
+  if (/fetch failed|network error|eai_again|enotfound|etimedout|econnreset|enetunreach/i.test(message)) {
+    return '无法连接更新包下载地址，请检查网络后重试';
+  }
+  return message || '更新包下载失败';
+}
+
+async function downloadPackage(url, target) {
+  assertTrustedDownloadUrl(url);
+  try {
+    await downloadWithFetch(url, target);
+    return;
+  } catch (fetchError) {
+    try {
+      await downloadWithCurl(url, target);
+      return;
+    } catch (curlError) {
+      throw new Error(readableDownloadError(curlError.message ? curlError : fetchError));
+    }
+  }
 }
 
 async function status() {
@@ -175,7 +237,8 @@ async function stageAndSchedule(db, expectedVersion, databaseConfig, backupServi
   if (!fs.existsSync(runner)) throw new Error('更新组件缺失，请重新下载完整客户包');
   const child = spawn(process.execPath, [runner, pendingPath, String(process.pid)], { cwd: root, detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
-  setTimeout(() => { try { process.kill(process.pid, 'SIGTERM'); } catch (_) {} }, 1500);
+  // Let Express flush the 202 response before the detached runner replaces the package.
+  setTimeout(() => { try { process.kill(process.pid, 'SIGTERM'); } catch (_) {} }, 5000);
   return { accepted: true, version: manifest.version, backup_file: backup?.file_name || null };
 }
 
