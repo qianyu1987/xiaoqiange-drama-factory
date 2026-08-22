@@ -49,8 +49,20 @@ jobs:
           Compress-Archive -Path "$package/*" -DestinationPath "release/XiaoQianDramaFactory-v$version-windows-x64.zip" -CompressionLevel Optimal
           $zip = Get-Item "release/XiaoQianDramaFactory-v$version-windows-x64.zip"
           $line = "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" + "`n"
-          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), $line, [System.Text.UTF8Encoding]::new($false))
-          node "$package/create-update-manifest.js" $version $zip.FullName "$((Get-Location).Path)/release/latest.json"
+          $bootstrap = Join-Path $env:RUNNER_TEMP 'xiaoqiange-bootstrap'
+          Remove-Item $bootstrap -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $bootstrap -ItemType Directory | Out-Null
+          @('start.bat', 'stop.bat', 'launcher.js', 'update-runner.js', 'README.md', 'LICENSE', 'VERSION', 'PACKAGE-MANIFEST.json') | ForEach-Object {
+            Copy-Item (Join-Path $package $_) (Join-Path $bootstrap $_) -Force
+          }
+          New-Item (Join-Path $bootstrap 'backend/src/services') -ItemType Directory -Force | Out-Null
+          Copy-Item (Join-Path $package 'backend/src/services/updateService.js') (Join-Path $bootstrap 'backend/src/services/updateService.js') -Force
+          Copy-Item (Join-Path $package 'frontend') (Join-Path $bootstrap 'frontend') -Recurse -Force
+          $bootstrapZip = Join-Path (Join-Path (Get-Location) 'release') "XiaoQianDramaFactory-v$version-bootstrap-windows-x64.zip"
+          Compress-Archive -Path "$bootstrap/*" -DestinationPath $bootstrapZip -CompressionLevel Optimal
+          $bootstrapLine = "$((Get-FileHash $bootstrapZip -Algorithm SHA256).Hash.ToLower())  $((Get-Item $bootstrapZip).Name)" + "`n"
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), $line + $bootstrapLine, [System.Text.UTF8Encoding]::new($false))
+          node "$package/create-update-manifest.js" $version $bootstrapZip "$((Get-Location).Path)/release/latest.json"
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
